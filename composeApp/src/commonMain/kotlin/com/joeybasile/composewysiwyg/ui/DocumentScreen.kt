@@ -74,56 +74,6 @@ fun SelectionOverlay(
     Box(
         modifier = modifier
             .fillMaxSize()
-            /*
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    // Wait for the first down event.
-                    val down = awaitFirstDown(requireUnconsumed = false)
-
-                    var dragTriggered = false
-
-                    // Wait until the pointer has moved beyond the slop threshold.
-                    /*
-                    Gesture Event Flow:
-Notice that if the user taps without exceeding the touch slop, the lambda in awaitTouchSlopOrCancellation will never be executed. Consequently, the isSelecting flag remains false and the overlay (if conditionally rendered) won’t intercept normal tap events.
-
-Recomposition and UI Feedback:
-Once state.startSelection(down.position) is called and isSelecting is set to true, the system will recompose any composables that read this flag (e.g., your conditional logic in DocumentWithSelectionOverlay may now show the overlay). This immediate feedback ensures that visual selection highlights or gesture captures are only active when truly needed.
-
-Separation of Concerns:
-By delegating the drag detection into the pointerInput modifier in the overlay, you ensure that only drag gestures change the selection state. This also means that your text fields remain accessible to tap events (when no drag is detected), since the overlay isn’t interfering unless it absolutely must.
-
-                     */
-                    val drag = awaitTouchSlopOrCancellation(down.id) { change, _ ->
-                        // We reached the threshold: consider this as the start of a drag.
-                        dragTriggered = true
-
-                        // Inform the DocumentState that a selection is starting.
-                        // This method should set state.isSelecting to true.
-                        state.startSelection(down.position)
-
-                        // Consume this change to prevent lower-level components from processing it.
-                        change.consume()
-                    }
-
-                    // If no drag was triggered (e.g., the user just tapped), exit and let the event pass.
-                    if (!dragTriggered) {
-                        return@awaitEachGesture
-                    }
-
-                    // Process further pointer events while the pointer remains pressed.
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        if (event.changes.all { it.changedToUp() }) break
-                        state.updateSelection(event.changes.first().position)
-                        event.changes.forEach { it.consume() }
-                    }
-
-                    // Once the drag ends, finalize and clean up the selection.
-                    state.finishSelection()
-                }
-            }
-             */
 
             .drawWithContent {
                 drawContent()
@@ -272,23 +222,6 @@ fun DocTextField(
     focusedLine: MutableState<Int>
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    /*
-        // 1) Get a measurer and density
-        val textMeasurer = rememberTextMeasurer()
-        val density = LocalDensity.current
-        // Get the text style used by BasicTextField (defaults to LocalTextStyle.current)
-        val textStyle = LocalTextStyle.current
-        val layoutResult = remember(entry.textFieldValue.text, textStyle) {
-            textMeasurer.measure(
-                text           = AnnotatedString(entry.textFieldValue.text),
-                style          = textStyle,
-                // unconstrained width → returns “intrinsic” width
-                constraints    = Constraints(maxWidth = Constraints.Infinity),
-                softWrap       = false,
-                overflow       = TextOverflow.Visible
-            )
-        }
-     */
 
     // val isTooWide = layoutResult.size.width > state.maxWidthPx
     // Holds (fieldIndex, characterOffset)
@@ -370,11 +303,6 @@ fun DocTextField(
                     isFocused = true
                     println("focus updated to index index")
                     state.onEvent(DocumentEvent.FocusChanged(index))
-                    //state.updateFocusedLine(index)
-                    // Update the global caret field index
-                   // state.caretState.value = state.caretState.value.copy(fieldIndex = index)
-                    // Immediately update caret position as well
-                   // state.updateCaretPosition()
                 } else {
                     isFocused = false
                 }
@@ -386,30 +314,7 @@ fun DocTextField(
         //This is to make the 'local' cursors transparent.
         cursorBrush = SolidColor(Color.Blue),
         singleLine = true,
-        /*
-        decorationBox =  lit@{ inner ->
 
-            val measurer = rememberTextMeasurer()
-            val result = measurer.measure(
-                entry.textFieldValue.annotatedString,
-                constraints = Constraints(maxWidth = state.maxWidthPx)
-                )
-            val overflowed = result.didOverflowWidth
-            if (overflowed) {
-                SideEffect{
-                    val cut = result.getLineEnd(0, visibleEnd = true)
-                    state.updateTextFieldValue(
-                        index,
-                        newValue = entry.textFieldValue.copy(
-                            annotatedString = entry.textFieldValue.annotatedString.subSequence(0, cut)
-                        ))
-                }
-                return@lit
-            }
-            inner()
-        }
-
-         */
     )
 
     /*
