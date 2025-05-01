@@ -12,6 +12,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 sealed class DocumentEvent {
     data class FocusChanged(val index: Int) : DocumentEvent()
 
+   object EnterPressed: DocumentEvent()
+
     object DocumentLayoutChanged : DocumentEvent()
 
     sealed class Text : DocumentEvent() {

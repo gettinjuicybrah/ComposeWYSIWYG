@@ -9,6 +9,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.text.input.TextFieldValue
+import com.joeybasile.composewysiwyg.events.DocumentEvent
 import com.joeybasile.composewysiwyg.model.DocumentState
 import com.joeybasile.composewysiwyg.model.DocumentTextFieldState
 import com.joeybasile.composewysiwyg.model.caret.moveCaretDown
@@ -16,6 +17,7 @@ import com.joeybasile.composewysiwyg.model.caret.moveCaretLeft
 import com.joeybasile.composewysiwyg.model.caret.moveCaretRight
 import com.joeybasile.composewysiwyg.model.caret.moveCaretUp
 import com.joeybasile.composewysiwyg.model.caret.onCaretMoved
+import com.joeybasile.composewysiwyg.model.event.onEvent
 import com.joeybasile.composewysiwyg.model.selection.selectAll
 
 fun handleDocKeyEvent(
@@ -52,21 +54,13 @@ fun handleDocKeyEvent(
                 return true
             }
             Key.Enter -> {
-                /*
-                // Insert a new text field after the current one
-                state.insertTextFieldAfter(currentIndex)
-                // For example, update focus to the new field:
-                state.updateFocusedLine(currentIndex + 1)
-                */
-                val currentFieldIndex = state.caretState.value.fieldIndex
-                state.insertTextFieldAfter(currentFieldIndex)
-                state.caretState.value = state.caretState.value.copy(
-                    fieldIndex = currentFieldIndex + 1,
-                    offset = 0
-                )
-                state.onCaretMoved()
+                state.onEvent(DocumentEvent.EnterPressed)
                 return true
 
+            }
+            Key.NumPadEnter -> {
+                state.onEvent(DocumentEvent.EnterPressed)
+                return true
             }
             else -> return false
         }

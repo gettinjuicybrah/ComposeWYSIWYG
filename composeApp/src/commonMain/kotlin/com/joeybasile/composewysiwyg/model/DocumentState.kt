@@ -18,6 +18,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Constraints
 import com.joeybasile.composewysiwyg.events.DocumentEvent
@@ -126,6 +127,44 @@ class DocumentState(val scope: CoroutineScope) {
 
     }
 
+    /*
+    The purpose of this function is to flip the hasNewLineAtEnd flag
+    of the documentTextFieldList, specified by index.
+     */
+    fun flipNewLineAtEnd(index: Int){
+        documentTextFieldList.set(
+            index,
+            element = documentTextFieldList[index].copy(hasNewLineAtEnd = !documentTextFieldList[index].hasNewLineAtEnd)
+        )
+    }
+    fun setNewLineAtEnd(index: Int){
+        documentTextFieldList.set(
+            index,
+            element = documentTextFieldList[index].copy(hasNewLineAtEnd = true)
+        )
+    }
+    private fun makeField(initial: AnnotatedString): DocumentTextFieldState =
+        DocumentTextFieldState(
+            textFieldValue = TextFieldValue(annotatedString = initial),
+            focusRequester = FocusRequester()
+        )
+
+    fun prependToField(
+        index: Int,
+        prefix: AnnotatedString
+    ) {
+        val old = documentTextFieldList[index]
+        val combined = buildAnnotatedString {
+            append(prefix)
+            append(old.textFieldValue.annotatedString)
+        }
+        documentTextFieldList[index] = old.copy(
+            textFieldValue = old.textFieldValue.copy(
+                annotatedString = combined,
+                selection       = TextRange(prefix.length)
+            )
+        )
+    }
     fun insertTextFieldAfter(index: Int) {
         // Create new DocumentTextFieldState.
         val newField = DocumentTextFieldState(

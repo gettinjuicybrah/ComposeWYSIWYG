@@ -22,6 +22,7 @@ data class DocumentTextFieldState (
     val id: String = Uuid.random().toString(),
     var layoutCoordinates: LayoutCoordinates? = null, // updated via onGloballyPositioned
     var textLayoutResult: TextLayoutResult? = null, // holds metrics like cursor offsets
-    var textFieldValue: TextFieldValue, // current text state of the BTF,
-    val focusRequester: FocusRequester
+    val textFieldValue: TextFieldValue, // current text state of the BTF,
+    val focusRequester: FocusRequester,
+    val hasNewLineAtEnd: Boolean = false // true if \n at the end of a line.
 )
