@@ -281,10 +281,13 @@ fun DocTextField(
                             }
                             event.changes.forEach { it.consume() }
                         }
+                        /*
                         if (selectionTriggered) {
                             println("Selection finished")
                             state.onEvent(DocumentEvent.Selection.Finish)
                         }
+
+                         */
                     }
                 }
             }

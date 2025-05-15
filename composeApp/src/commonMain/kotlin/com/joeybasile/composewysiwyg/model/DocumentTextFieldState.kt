@@ -24,5 +24,6 @@ data class DocumentTextFieldState (
     var textLayoutResult: TextLayoutResult? = null, // holds metrics like cursor offsets
     val textFieldValue: TextFieldValue, // current text state of the BTF,
     val focusRequester: FocusRequester,
-    val hasNewLineAtEnd: Boolean = false // true if \n at the end of a line.
+    val hasNewLineAtEnd: Boolean = false, // true if \n at the end of a line.
+    val isEmpty: Boolean = false,
 )

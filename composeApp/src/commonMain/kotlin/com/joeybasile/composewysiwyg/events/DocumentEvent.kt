@@ -4,6 +4,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.input.TextFieldValue
+import com.joeybasile.composewysiwyg.events.DocumentEvent.Caret.Direction
 
 /**
  * A sealed class representing all possible user or UI-driven events
@@ -25,6 +26,9 @@ sealed class DocumentEvent {
         data class Start(val at: Offset)            : Selection()
         data class Update(val to: Offset)           : Selection()
         object Finish                              : Selection()
+        data class StartShiftArrow(val direction: Direction) : Selection()
+        data class UpdateShiftArrow(val direction: Direction): Selection()
+        enum class Direction { Left, Right, Up, Down }
     }
     data class CoordinatesUpdated(val type: CoordType, val coords: LayoutCoordinates) : DocumentEvent()
 

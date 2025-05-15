@@ -14,10 +14,19 @@ import com.joeybasile.composewysiwyg.model.caret.updateCaretIndex
 import com.joeybasile.composewysiwyg.model.caret.updateCaretPosition
 import com.joeybasile.composewysiwyg.model.selection.finishSelection
 import com.joeybasile.composewysiwyg.model.selection.startSelection
+import com.joeybasile.composewysiwyg.model.selection.startShiftArrowSelection
 import com.joeybasile.composewysiwyg.model.selection.updateSelection
 
 fun DocumentState.onEvent(event: DocumentEvent) {
     when(event) {
+
+        is DocumentEvent.Selection.StartShiftArrow -> {
+            startShiftArrowSelection(event.direction)
+        }
+        is DocumentEvent.Selection.UpdateShiftArrow -> {
+
+        }
+
         is DocumentEvent.EnterPressed -> {
             val currentFieldIndex = caretState.value.fieldIndex
             val currentField = documentTextFieldList[currentFieldIndex]

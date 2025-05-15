@@ -8,6 +8,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.text.input.TextFieldValue
 import com.joeybasile.composewysiwyg.events.DocumentEvent
 import com.joeybasile.composewysiwyg.model.DocumentState
@@ -19,11 +20,16 @@ import com.joeybasile.composewysiwyg.model.caret.moveCaretUp
 import com.joeybasile.composewysiwyg.model.caret.onCaretMoved
 import com.joeybasile.composewysiwyg.model.event.onEvent
 import com.joeybasile.composewysiwyg.model.selection.selectAll
+import com.joeybasile.composewysiwyg.model.selection.startShiftArrowSelection
 
 fun handleDocKeyEvent(
     event: KeyEvent,
     state: DocumentState,
 ): Boolean {
+    if (event.isShiftPressed && event.key == Key.DirectionLeft) {
+        state.onEvent(DocumentEvent.Selection.StartShiftArrow(DocumentEvent.Selection.Direction.Left))
+        return true
+    }
     if (event.isCtrlPressed && event.key == Key.A)  {
         state.selectAll()
         return true  // Consume the event.
