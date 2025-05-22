@@ -3,22 +3,15 @@ package com.joeybasile.composewysiwyg.model.selection
 import androidx.compose.ui.geometry.Offset
 
 data class SelectionState(
-    val isActive: Boolean = false, //isDragging
-    val startField: Int? = null,
-    val startOffset: Int? = null,
     val segments: List<SelectionSegment> = emptyList(),
-    val headCaret: HeadSelectionCaretState? = null,
-    val tailCaret: TailSelectionCaretState? = null,
-)
-data class HeadSelectionCaretState(
+    val anchor: SelectionCaretState? = null,
+    val focus: SelectionCaretState? = null,
+){
+    val isActive: Boolean // Derived state. ensures any mutation to anchor or focus can be reflected in the getter.
+        get() = anchor != null && focus != null && anchor != focus
+}
+data class SelectionCaretState(
     val fieldIndex: Int, // Index of the active (BasicText)Field
     val offset: Int, // (Character) offset within the field
-    val globalPosition: Offset, // Global x, y relative to Box coords.
-    val isShiftPlusArrowOriginCaret: Boolean //Whether or not shift + arrow_dir is relative to this or not.
-)
-data class TailSelectionCaretState(
-    val fieldIndex: Int, // Index of the active (BasicText)Field
-    val offset: Int, // (Character) offset within the field
-    val globalPosition: Offset, // Global x, y relative to Box coords.
-    val isShiftPlusArrowOriginCaret: Boolean //Whether or not shift + arrow_dir is relative to this or not.
+    val globalPosition: Offset // Global x, y relative to Box coords.
 )

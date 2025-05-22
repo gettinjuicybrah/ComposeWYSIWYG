@@ -23,12 +23,16 @@ sealed class DocumentEvent {
         data class CoordChanged(val index: Int, val coords: LayoutCoordinates): Text()
     }
     sealed class Selection : DocumentEvent() {
-        data class Start(val at: Offset)            : Selection()
-        data class Update(val to: Offset)           : Selection()
+        data class StartDrag(val at: Offset)            : Selection()
+        data class UpdateDrag(val to: Offset)           : Selection()
         object Finish                              : Selection()
-        data class StartShiftArrow(val direction: Direction) : Selection()
-        data class UpdateShiftArrow(val direction: Direction): Selection()
+        data class StartShift(val direction: Direction) : Selection()
+        data class UpdateShift(val direction: Direction): Selection()
+        data class GoArrowDir(val direction: Direction) : Selection()
         enum class Direction { Left, Right, Up, Down }
+        object NullifyState : Selection()
+        object RemoveSelection : Selection()
+        data class Paste(val text: String) : Selection()
     }
     data class CoordinatesUpdated(val type: CoordType, val coords: LayoutCoordinates) : DocumentEvent()
 

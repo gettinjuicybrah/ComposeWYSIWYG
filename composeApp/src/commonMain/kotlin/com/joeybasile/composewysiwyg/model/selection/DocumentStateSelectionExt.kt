@@ -5,14 +5,19 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.ExperimentalTextApi
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.Typeface
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Density
 import com.joeybasile.composewysiwyg.events.DocumentEvent
 import com.joeybasile.composewysiwyg.model.DocumentState
 import com.joeybasile.composewysiwyg.model.DocumentTextFieldState
+import com.joeybasile.composewysiwyg.model.caret.onCaretMoved
+import com.joeybasile.composewysiwyg.util.sliceRange
 
 /*
 To initialize selection via shift + left | right | up | down keys,
@@ -24,306 +29,457 @@ which will be used as the reference origin when an update to the selection via s
 is attempted during updateShiftArrowSelection()
  */
 
-fun DocumentState.setHeadCaret(headSelectionCaretState: HeadSelectionCaretState) {
+fun DocumentState.setAnchorCaret(anchor: SelectionCaretState) {
     selectionState = selectionState
         .copy(
-            headCaret = headSelectionCaretState
+            anchor = anchor
         )
 }
-fun DocumentState.setTailCaret(tailSelectionCaretState: TailSelectionCaretState) {
+
+fun DocumentState.setFocusCaret(focus: SelectionCaretState) {
     selectionState = selectionState
         .copy(
-            tailCaret = tailSelectionCaretState
+            focus = focus
         )
 }
-//nop because can't do shit homie.
-fun DocumentState.processShiftArrowLeftWhenAtRoot(){
-    return
-}
-/*
-Aye bruh all we finna do is get that fuckin rect to the left and set the fuckin state you feel
- */
-fun DocumentState.processShiftArrowLeftToSameFieldFromNonZeroOffset(){
 
-}
-//just render a white space in above field.
-fun DocumentState.processShiftArrowLeftToAboveFieldContainingEmpty(){
+fun DocumentState.startShiftSelection(direction: DocumentEvent.Selection.Direction) {
+    // If no anchor yet, this is “first arrow”
+    if (selectionState.anchor == null) {
+        // 1) Record the original caret as the anchor
+        val original = caretState.value
 
-}
-//just add the last char's rect as selection
-fun DocumentState.processShiftArrowLeftToAboveFieldLastChar(){
-
-}
-//aye can't do shit folk
-fun DocumentState.processShiftArrowRightWhenAtLeaf(){
-    return
-}
-fun DocumentState.processShiftArrowRightToSameFieldFromNonMaxOffset(){
-
-}
-fun DocumentState.processShiftArrowRightToBelowFieldContainingEmpty(){
-
-}
-fun DocumentState.processShiftArrowRightTOBelowFieldFirstChar(){
-
-}
-
-/*
-Whether or not the global caret is at the root.
- */
-fun DocumentState.determineIfAtRootOfDoc(): Boolean{
-    return caretState.value.offset == 0 && caretState.value.fieldIndex == 0
-}
-
-fun DocumentState.startShiftArrowSelection(direction: DocumentEvent.Selection.Direction) {
-    when (direction) {
-        /*
-        Must consider 'given the current global caret position, the current field content, the current field position,
-        and surrounding field content and positions, determine if the move is appropriate to intialize selection.
-
-        If not, return.
-        If so, initialize as appropriate, given the above mentioned context.
-        So, initialize the SelectionState, dependent upon the caret state and **Deemed relevant, depending on direction** field states.
-
-    3 cases:
-    1) "root" -> nop
-    2) currentFieldIndex > 0 && currenFieldOffset == 0 -> select last offset of above line or an imaginary white space to the right of last offset
-        the headCaret would be set to the getCursorRect(maxOffset) of the above field. Need to somehow generate this imaginate white space.
-    3) offset > 0 -> select immediate left rect to highlight.
-
-         */
-        DocumentEvent.Selection.Direction.Left -> {
-
-            val segments = mutableListOf<SelectionSegment>()
-            /*
-            Case 1.
-             */
-            if (determineIfAtRootOfDoc()) return
-            // remember where we started
-            val initialFieldIndex = caretState.value.fieldIndex
-            val initialOffset = caretState.value.offset
-            val currentField = documentTextFieldList[initialFieldIndex]
-
-            /*
-            Case 2.
-             */
-            if (initialFieldIndex > 0 && initialOffset == 0) {
-
-                val aboveIndex = initialFieldIndex -1
-                val aboveMaxOffset = documentTextFieldList[aboveIndex].textFieldValue.text.length
-                val aboveField = documentTextFieldList[aboveIndex]
-                //Is NOT shift+Arrow origin caret because the direction moved left.
-                val tailCaret = TailSelectionCaretState(
-                    fieldIndex = caretState.value.fieldIndex,
-                    offset = caretState.value.offset,
-                    globalPosition = caretState.value.globalPosition,
-                    isShiftPlusArrowOriginCaret = false
-                )
-                val localOffset = aboveField.textLayoutResult?.getCursorRect(aboveMaxOffset)
-                val localX = localOffset?.left
-                val localY = localOffset?.top
-                val globalOffset = parentCoordinates.value.box?.localPositionOf(aboveField.layoutCoordinates!!, Offset(localX!!, localY!!))
-
-                val headCaret = TailSelectionCaretState(
-                    fieldIndex = initialFieldIndex - 1,
-                    offset = aboveMaxOffset,
-                    globalPosition = globalOffset!!,
-                    isShiftPlusArrowOriginCaret = true
-                )
-                //val fillerRect = documentTextFieldList[initialFieldIndex-1].textLayoutResult?.layoutInput?.let { measureCharRect(' ', it.style) }
-                val fillerRect = aboveField.textLayoutResult?.getBoundingBox(aboveMaxOffset-1)
-                //First, we'll need to get the rect for the last offset in the above field.
-                //perhaps it's just a 'filler' white space. The other option, at the current state of the app, is it being
-                // a styled char. So, we should tend to both cases.
-                segments.add(
-                    SelectionSegment(
-                        0, 0, 0, fillerRect!!
-                )
-                )
-            }
-
-            /*
-            Case 3.
-             */
-            if (initialOffset > 0) {
-
-                //Is NOT shift+Arrow origin caret because the direction moved left.
-                val tailCaret = TailSelectionCaretState(
-                    fieldIndex = caretState.value.fieldIndex,
-                    offset = caretState.value.offset,
-                    globalPosition = caretState.value.globalPosition,
-                    isShiftPlusArrowOriginCaret = false
-                )
-                val localOffset = currentField.textLayoutResult?.getCursorRect(initialOffset-1)
-                val localX = localOffset?.left
-                val localY = localOffset?.top
-                val globalOffset = parentCoordinates.value.box?.localPositionOf(currentField.layoutCoordinates!!, Offset(localX!!, localY!!))
-                val headCaret = HeadSelectionCaretState(
-                    fieldIndex = caretState.value.fieldIndex,
-                    offset = caretState.value.offset-1,
-                    globalPosition = globalOffset!!,
-                    isShiftPlusArrowOriginCaret = true
-                )
-                val segment = currentField.textLayoutResult?.getBoundingBox(caretState.value.offset-1)
-                segments.add(SelectionSegment(
-                    0, 0, 0, segment!!)
-                )
-                selectionState = selectionState.copy(
-                    isActive = true,
-                    startField = initialFieldIndex,
-                    startOffset = initialOffset,
-                    segments = segments,
-                    headCaret = headCaret,
-                    tailCaret = tailCaret
-                )
-            }
-
-        }
-
-        DocumentEvent.Selection.Direction.Right -> TODO()
-        DocumentEvent.Selection.Direction.Up -> TODO()
-        DocumentEvent.Selection.Direction.Down -> TODO()
-    }
-
-}
-/*
-@OptIn(ExperimentalTextApi::class)
-@Composable
-fun measureCharRect(
-    char: Char,
-    style: TextStyle
-): Rect {
-    // 1) remember your measurer
-    val measurer = rememberTextMeasurer()
-
-    // 2) do the synchronous measurement right in your composable—
-    //    this will automatically re-execute whenever `char` or `style` change
-    val layout = measurer.measure(
-        text = char.toString(),
-        style = style
-    )
-
-    // 3) wrap the IntSize in a Rect and return it
-    return Rect(
-        offset = Offset.Zero,
-        size = Size(
-            width  = layout.size.width.toFloat(),
-            height = layout.size.height.toFloat()
-        )
-    )
-}
-*/
-fun DocumentState.updateShiftArrowSelection(globalOffset: Offset) {
-
-}
-
-
-//Determine which text field and offset correspond to the drag start.
-fun DocumentState.startSelection(globalOffset: Offset) {
-    selectionState = selectionState.copy(isActive = true)
-    val pos = findTextFieldAtPosition(globalOffset)
-    if (pos != null) {
-
-        selectionState = selectionState.copy(startField = pos.first, startOffset = pos.second)
-        updateSelection(globalOffset)
-    }
-    // Additional logic for starting selection…
-}
-
-// Modified updateSelection: Compute a list of selection segments
-fun DocumentState.updateSelection(globalOffset: Offset) {
-
-    if (selectionState.startField == null || selectionState.startOffset == null) return
-
-    val pos = findTextFieldAtPosition(globalOffset) ?: return
-    val (currentFieldIndex, currentOffset) = pos
-    val boxCoords = parentCoordinates.value.box ?: return
-
-    val segments = mutableListOf<SelectionSegment>()
-    val startFieldIdx = selectionState.startField!!
-    val endFieldIdx = currentFieldIndex
-
-    //If the starting field is the same as the current field.
-    if (startFieldIdx == endFieldIdx) {
-        val field = documentTextFieldList[startFieldIdx]
-        val start = minOf(selectionState.startOffset!!, currentOffset)
-        val end = maxOf(selectionState.startOffset!!, currentOffset)
-        val rect = getFieldSelectionRect(field, start, end, boxCoords) ?: return
-        segments.add(SelectionSegment(startFieldIdx, start, end, rect))
-    } else {
-        //Selection is going downwards.
-        if (startFieldIdx < endFieldIdx) {
-            // Start field: from selectionStartOffset to end of field
-            val startField = documentTextFieldList[startFieldIdx]
-            val fieldLength = startField.textFieldValue.text.length
-            val rectStart = getFieldSelectionRect(
-                startField,
-                selectionState.startOffset!!,
-                fieldLength,
-                boxCoords
+        setAnchorCaret(
+            SelectionCaretState(
+                fieldIndex = original.fieldIndex,
+                offset = original.offset,
+                globalPosition = original.globalPosition
             )
-            rectStart?.let {
-                segments.add(
-                    SelectionSegment(
-                        startFieldIdx,
-                        selectionState.startOffset!!,
-                        fieldLength,
-                        it
-                    )
-                )
-            }
+        )
 
-            // Middle fields (if any): entire field selected
-            for (idx in (startFieldIdx + 1) until endFieldIdx) {
-                val field = documentTextFieldList[idx]
-                val textLen = field.textFieldValue.text.length
-                val rectMid = getFieldSelectionRect(field, 0, textLen, boxCoords)
-                rectMid?.let {
-                    segments.add(SelectionSegment(idx, 0, textLen, it))
-                }
-            }
+        // 2) Compute the very first focus one step over
+        val firstFocus = computeAdjacentCaret(selectionState.anchor!!, direction)
+        setFocusCaret(firstFocus)
+    } else {
+        // Subsequent arrows: just move the focus
+        val prevFocus = selectionState.focus!!
+        val newFocus = computeAdjacentCaret(prevFocus, direction)
+        setFocusCaret(newFocus)
+    }
 
-            // End field: from beginning of field to currentOffset
-            val endField = documentTextFieldList[endFieldIdx]
-            val rectEnd = getFieldSelectionRect(endField, 0, currentOffset, boxCoords)
-            rectEnd?.let {
-                segments.add(SelectionSegment(endFieldIdx, 0, currentOffset, it))
+    // 3) Rebuild ALL segments from the immutable anchor and fresh focus
+    rebuildSelectionFromAnchorAndFocus()
+}
+
+private fun DocumentState.computeAdjacentCaret(
+    from: SelectionCaretState,
+    direction: DocumentEvent.Selection.Direction
+): SelectionCaretState {
+    return when (direction) {
+        DocumentEvent.Selection.Direction.Left -> moveOneLeft(from)
+        DocumentEvent.Selection.Direction.Right -> moveOneRight(from)
+        DocumentEvent.Selection.Direction.Up -> moveOneUp(from)
+        DocumentEvent.Selection.Direction.Down -> moveOneDown(from)
+    }
+}
+
+private fun DocumentState.rebuildSelectionFromAnchorAndFocus() {
+    val a = selectionState.anchor!!  // immutable origin
+    val f = selectionState.focus!!   // current frontier
+    // Derive startField/startOffset from 'a'
+    selectionState = selectionState.copy(
+        segments = computeSegmentsBetween(a, f)
+    )
+}
+// -- DIRECTIONAL MOVES -----------------------------------------------------
+
+private fun DocumentState.moveOneLeft(from: SelectionCaretState): SelectionCaretState {
+    val boxCoords = parentCoordinates.value.box ?: return from
+    var (fieldIndex, offset) = from
+    if (offset > 0) {
+        offset--
+    } else if (fieldIndex > 0) {
+        // jump to end of previous field
+        fieldIndex--
+        val prevField = documentTextFieldList[fieldIndex]
+        offset = prevField.textFieldValue.text.length
+    }
+    val rect = getGlobalCursorRect(
+        documentTextFieldList[fieldIndex], offset, boxCoords
+    ) ?: return from
+    return SelectionCaretState(fieldIndex, offset, rect.topLeft)
+}
+
+private fun DocumentState.moveOneRight(from: SelectionCaretState): SelectionCaretState {
+    val boxCoords = parentCoordinates.value.box ?: return from
+    var (fieldIndex, offset) = from
+    val field = documentTextFieldList[fieldIndex]
+    val length = field.textFieldValue.text.length
+    if (offset < length) {
+        offset++
+    } else if (fieldIndex < documentTextFieldList.lastIndex) {
+        // jump to start of next field
+        fieldIndex++
+        offset = 0
+    }
+    val rect = getGlobalCursorRect(
+        documentTextFieldList[fieldIndex], offset, boxCoords
+    ) ?: return from
+    return SelectionCaretState(fieldIndex, offset, rect.topLeft)
+}
+
+private fun DocumentState.moveOneUp(from: SelectionCaretState): SelectionCaretState {
+    val boxCoords = parentCoordinates.value.box ?: return from
+    var (fieldIndex, offset, global) = from
+    val field = documentTextFieldList[fieldIndex]
+    val layout = field.textLayoutResult ?: return from
+
+    val currentLine = layout.getLineForOffset(offset)
+    if (currentLine > 0) {
+        // move within same field
+        val x = global.x - boxCoords.localPositionOf(field.layoutCoordinates!!, Offset.Zero).x
+        val targetY = layout.getLineTop(currentLine - 1)
+        val newOffset = layout.getOffsetForPosition(Offset(x, targetY))
+        val rect = getGlobalCursorRect(field, newOffset, boxCoords) ?: return from
+        return SelectionCaretState(fieldIndex, newOffset, rect.topLeft)
+    } else if (fieldIndex > 0) {
+        // wrap to last line of previous field
+        fieldIndex--
+        val prevField = documentTextFieldList[fieldIndex]
+        val prevLayout = prevField.textLayoutResult ?: return from
+        val lastLine = prevLayout.lineCount - 1
+        val xGlobal = global.x
+        val localX =
+            prevField.layoutCoordinates!!.localPositionOf(boxCoords, Offset(xGlobal, global.y)).x
+        val targetY = prevLayout.getLineTop(lastLine)
+        val newOffset = prevLayout.getOffsetForPosition(Offset(localX, targetY))
+        val rect = getGlobalCursorRect(prevField, newOffset, boxCoords) ?: return from
+        return SelectionCaretState(fieldIndex, newOffset, rect.topLeft)
+    }
+    return from
+}
+
+private fun DocumentState.moveOneDown(from: SelectionCaretState): SelectionCaretState {
+    val boxCoords = parentCoordinates.value.box ?: return from
+    var (fieldIndex, offset, global) = from
+    val field = documentTextFieldList[fieldIndex]
+    val layout = field.textLayoutResult ?: return from
+
+    val currentLine = layout.getLineForOffset(offset)
+    if (currentLine < layout.lineCount - 1) {
+        // move within same field
+        val x = global.x - boxCoords.localPositionOf(field.layoutCoordinates!!, Offset.Zero).x
+        val targetY = layout.getLineBottom(currentLine)
+        val newOffset = layout.getOffsetForPosition(Offset(x, targetY))
+        val rect = getGlobalCursorRect(field, newOffset, boxCoords) ?: return from
+        return SelectionCaretState(fieldIndex, newOffset, rect.topLeft)
+    } else if (fieldIndex < documentTextFieldList.lastIndex) {
+        // wrap to first line of next field
+        fieldIndex++
+        val nextField = documentTextFieldList[fieldIndex]
+        val nextLayout = nextField.textLayoutResult ?: return from
+        val xGlobal = global.x
+        val localX =
+            nextField.layoutCoordinates!!.localPositionOf(boxCoords, Offset(xGlobal, global.y)).x
+        val targetY = nextLayout.getLineTop(0)
+        val newOffset = nextLayout.getOffsetForPosition(Offset(localX, targetY))
+        val rect = getGlobalCursorRect(nextField, newOffset, boxCoords) ?: return from
+        return SelectionCaretState(fieldIndex, newOffset, rect.topLeft)
+    }
+    return from
+}
+/**
+ * Given current selection’s anchor+focus, pick the boundary caret:
+ * - Left/Up  → the “start” of the selection
+ * - Right/Down → the “end” of the selection
+ */
+private fun DocumentState.getBoundaryCaret(
+    direction: DocumentEvent.Selection.Direction
+): SelectionCaretState {
+    val a = selectionState.anchor ?: return selectionState.focus!!
+    val f = selectionState.focus  ?: return a
+    // determine document-order start & end
+    val (start, end) = if (
+        a.fieldIndex < f.fieldIndex ||
+        (a.fieldIndex == f.fieldIndex && a.offset <= f.offset)
+    ) a to f else f to a
+
+    return when (direction) {
+        DocumentEvent.Selection.Direction.Left,
+        DocumentEvent.Selection.Direction.Up   -> start
+        DocumentEvent.Selection.Direction.Right,
+        DocumentEvent.Selection.Direction.Down -> end
+    }
+}
+fun DocumentState.clearSelectionIfActive() {
+    if (selectionState.isActive) finishSelection()
+}
+fun DocumentState.goArrowDir( direction: DocumentEvent.Selection.Direction){
+    // 1) pick the “collapse” caret
+    val boundary = getBoundaryCaret(direction)
+
+    // 2) if Up/Down, nudge off that boundary into the next field/line
+    val targetSelectionCaret = when (direction) {
+        DocumentEvent.Selection.Direction.Up,
+        DocumentEvent.Selection.Direction.Down ->
+            computeAdjacentCaret(boundary, direction)
+        else ->
+            boundary
+    }
+
+    // 3) wipe out the selection entirely
+    finishSelection()  // clears anchor, focus, & segments
+
+    // 4) move the global caret to that spot
+    caretState.value = caretState.value.copy(
+        fieldIndex = targetSelectionCaret.fieldIndex,
+        offset     = targetSelectionCaret.offset
+    )
+
+    // 5) sync everything (layout, local TextFieldValue, etc.)
+    onCaretMoved()
+}
+// -- SEGMENT REBUILD -------------------------------------------------------
+
+/**
+ * Recomputes a list of SelectionSegment between two carets
+ * across single or multiple fields in document order.
+ */
+private fun DocumentState.computeSegmentsBetween(
+    anchor: SelectionCaretState,
+    focus: SelectionCaretState
+): List<SelectionSegment> {
+    val segments = mutableListOf<SelectionSegment>()
+    val boxCoords = parentCoordinates.value.box ?: return emptyList()
+    val startFieldIdx = anchor.fieldIndex
+    val endFieldIdx = focus.fieldIndex
+    val startOff = anchor.offset
+    val endOff = focus.offset
+
+    if (startFieldIdx == endFieldIdx) {
+        // same field
+        val field = documentTextFieldList[startFieldIdx]
+        val start = minOf(startOff, endOff)
+        val end = maxOf(startOff, endOff)
+        getFieldSelectionRect(field, start, end, boxCoords)?.let { rect ->
+            segments.add(SelectionSegment(startFieldIdx, start, end, rect))
+        }
+    } else if (startFieldIdx < endFieldIdx) {
+        // downward selection
+        // start field: from anchor to EOL
+        val startField = documentTextFieldList[startFieldIdx]
+        val len0 = startField.textFieldValue.text.length
+        getFieldSelectionRect(startField, startOff, len0, boxCoords)?.let {
+            segments.add(SelectionSegment(startFieldIdx, startOff, len0, it))
+        }
+        // full middle fields
+        for (i in (startFieldIdx + 1) until endFieldIdx) {
+            val field = documentTextFieldList[i]
+            val len = field.textFieldValue.text.length
+            getFieldSelectionRect(field, 0, len, boxCoords)?.let { rect ->
+                segments.add(SelectionSegment(i, 0, len, rect))
             }
         }
-        //Selection is going upwards.
-        else {
-           // Start field: from beginning of field to selectionStartOffset
-            val startField = documentTextFieldList[startFieldIdx]
-            val rectStart =
-                getFieldSelectionRect(startField, 0, selectionState.startOffset!!, boxCoords)
-            rectStart?.let {
-                segments.add(SelectionSegment(startFieldIdx, 0, selectionState.startOffset!!, it))
+        // end field: from BOF to focus
+        val endField = documentTextFieldList[endFieldIdx]
+        getFieldSelectionRect(endField, 0, endOff, boxCoords)?.let {
+            segments.add(SelectionSegment(endFieldIdx, 0, endOff, it))
+        }
+    } else {
+        // upward selection
+        // start field: from BOF to anchor
+        val startField = documentTextFieldList[startFieldIdx]
+        getFieldSelectionRect(startField, 0, startOff, boxCoords)?.let {
+            segments.add(SelectionSegment(startFieldIdx, 0, startOff, it))
+        }
+        // middle fields
+        for (i in (startFieldIdx - 1) downTo (endFieldIdx + 1)) {
+            val field = documentTextFieldList[i]
+            val len = field.textFieldValue.text.length
+            getFieldSelectionRect(field, 0, len, boxCoords)?.let { rect ->
+                segments.add(SelectionSegment(i, 0, len, rect))
             }
+        }
+        // end field: from focus to EOL
+        val endField = documentTextFieldList[endFieldIdx]
+        val lenEnd = endField.textFieldValue.text.length
+        getFieldSelectionRect(endField, endOff, lenEnd, boxCoords)?.let {
+            segments.add(SelectionSegment(endFieldIdx, endOff, lenEnd, it))
+        }
+    }
+    return segments
+}
+// 1) A tiny data class to carry our merge info:
+private data class MergeResult(
+    val startField: Int,
+    val endField: Int,
+    val merged: AnnotatedString,
+    val collapseOffset: Int
+)
 
-            // Middle fields (if any)
-            for (idx in (startFieldIdx - 1) downTo (endFieldIdx + 1)) {
-                val field = documentTextFieldList[idx]
-                val textLen = field.textFieldValue.text.length
-                val rectMid = getFieldSelectionRect(field, 0, textLen, boxCoords)
-                rectMid?.let {
-                    segments.add(SelectionSegment(idx, 0, textLen, it))
-                }
-            }
+// 2) Pull out the merge logic into its own function
+private fun DocumentState.mergeSelection(): MergeResult? {
+    val a = selectionState.anchor ?: return null
+    val f = selectionState.focus  ?: return null
+    // normalize so start ≤ end in document order
+    val (start, end) = if (
+        a.fieldIndex < f.fieldIndex ||
+        (a.fieldIndex == f.fieldIndex && a.offset <= f.offset)
+    ) a to f else f to a
 
-            // End field: from currentOffset to end of field
-            val endField = documentTextFieldList[endFieldIdx]
-            val fieldLength = endField.textFieldValue.text.length
-            val rectEnd = getFieldSelectionRect(endField, currentOffset, fieldLength, boxCoords)
-            rectEnd?.let {
-                segments.add(SelectionSegment(endFieldIdx, currentOffset, fieldLength, it))
-            }
+    val startIdx = start.fieldIndex
+    val endIdx   = end.fieldIndex
+
+    // grab the two AnnotatedStrings
+    val startAS = documentTextFieldList[startIdx].textFieldValue.annotatedString
+    val endAS   = documentTextFieldList[endIdx].textFieldValue.annotatedString
+
+    // build a single AnnotatedString = prefix + suffix
+    val merged = buildAnnotatedString {
+        // prefix = everything up to the start offset
+        append(startAS.sliceRange(0, start.offset))
+        // suffix = tail of the end line, even if it's the same line
+        append(endAS.sliceRange(end.offset, endAS.length))
+    }
+
+    return MergeResult(
+        startField     = startIdx,
+        endField       = endIdx,
+        merged         = merged,
+        collapseOffset = start.offset
+    )
+}
+
+// 3) A unified, modular handleRemoveSelection
+fun DocumentState.handleRemoveSelection() {
+    // if there's no real selection, bail
+    val merge = mergeSelection() ?: return
+
+    // prepare the new TextFieldValue for the start field
+    val oldValue = documentTextFieldList[merge.startField].textFieldValue
+    val newValue = oldValue.copy(
+        annotatedString = merge.merged,
+        // collapse at the start of the removed region
+        selection       = TextRange(merge.collapseOffset)
+    )
+
+    // 4) Use updateTextFieldValue so Compose re-renders this one field immediately
+    updateTextFieldValue(merge.startField, newValue)
+
+    // 5) Now remove any fully-deleted fields in reverse order
+    if (merge.endField > merge.startField) {
+        for (i in merge.endField downTo (merge.startField + 1)) {
+            documentTextFieldList.removeAt(i)
         }
     }
 
-    selectionState = selectionState.copy(segments = segments)
+    // 6) Clear out our selection state and sync everything
+    finishSelection()
+    onCaretMoved()
+}
+/*
+fun DocumentState.handleRemoveSelection() {
+    // 1) grab and normalize carets
+    val a = selectionState.anchor ?: return
+    val f = selectionState.focus  ?: return
+    val (start, end) = if (
+        a.fieldIndex < f.fieldIndex ||
+        (a.fieldIndex == f.fieldIndex && a.offset <= f.offset)
+    ) a to f else f to a
+
+    val startIdx = start.fieldIndex
+    val endIdx   = end.fieldIndex
+
+    // 2) pull out the two AnnotatedStrings
+    val startAS = documentTextFieldList[startIdx].textFieldValue.annotatedString
+    val endAS   = documentTextFieldList[endIdx].textFieldValue.annotatedString
+
+    // 3) build a merged AnnotatedString without the selection
+    val mergedAS = buildAnnotatedString {
+        // everything before the selection on the start line
+        append(startAS.subSequence(0, start.offset))
+        if (startIdx == endIdx) {
+            // single‐line: stitch in the tail of the same line
+            append(startAS.subSequence(end.offset, endAS.length))
+        } else {
+            // multi‐line: stitch in the tail of the end line
+            append(endAS.subSequence(end.offset, endAS.length))
+        }
+    }
+
+    // 4) update the start field to the merged AS (and set caret there)
+    val newValue = documentTextFieldList[startIdx].textFieldValue.copy(
+        annotatedString = mergedAS,
+        selection       = TextRange(start.offset)  // collapse at where ‘start’ was
+    )
+    documentTextFieldList[startIdx] =
+        documentTextFieldList[startIdx].copy(textFieldValue = newValue)
+
+    //updateTextFieldValue(startIdx, newValue)
+
+    // 5) remove any fully‐deleted fields
+    if (endIdx > startIdx) {
+        for (i in endIdx downTo (startIdx + 1)) {
+            documentTextFieldList.removeAt(i)
+        }
+    }
+
+    // 6) move the global caret
+    caretState.value = caretState.value.copy(
+        fieldIndex = startIdx,
+        offset     = newValue.selection.start
+    )
+
+    // 7) finish up
+    finishSelection()
+    onCaretMoved()
+}
+ */
+
+/*
+If you really must accept an Offset, just replace step 2 with:
+val caretAtOffset = toSelectionCaret(globalOffset)
+setFocusCaret(caretAtOffset)
+ */
+fun DocumentState.updateShiftSelection(direction: DocumentEvent.Selection.Direction) {
+    // 1) Ensure there’s an anchor; if not, defer to startShiftArrowSelection
+    if (selectionState.anchor == null) {
+        startShiftSelection(direction)
+        return
+    }
+
+    // 2) Compute the new focus by moving one logical step
+    val previousFocus = selectionState.focus!!
+    val newFocus = computeAdjacentCaret(previousFocus, direction)
+    setFocusCaret(newFocus)
+
+    // 3) Rebuild all selection segments from the immutable anchor → new focus
+    rebuildSelectionFromAnchorAndFocus()
 }
 
-// Helper function remains mostly the same
+fun DocumentState.startDragSelection(globalOffset: Offset) {
+    toSelectionCaret(globalOffset)?.let { dragCaret ->
+        setAnchorCaret(dragCaret)
+        setFocusCaret(dragCaret)
+        rebuildSelectionFromAnchorAndFocus()
+    }
+}
+
+fun DocumentState.updateDragSelection(globalOffset: Offset) {
+    toSelectionCaret(globalOffset)?.let { dragCaret ->
+        setFocusCaret(dragCaret)
+        rebuildSelectionFromAnchorAndFocus()
+    }
+}
+
+private fun DocumentState.toSelectionCaret(offset: Offset): SelectionCaretState? {
+    val (fieldIdx, textOff) = findTextFieldAtPosition(offset) ?: return null
+    val globalRect =
+        getGlobalCursorRect(documentTextFieldList[fieldIdx], textOff, parentCoordinates.value.box!!)
+            ?: return null
+    return SelectionCaretState(fieldIdx, textOff, globalRect.topLeft)
+}
+
 private fun getFieldSelectionRect(
     field: DocumentTextFieldState,
     startOffset: Int,
@@ -425,12 +581,12 @@ private fun getFieldSelectionRects(
 
 //Finalize the selection when the drag ends.
 fun DocumentState.finishSelection() {
-    selectionState = selectionState.copy(isActive = false, startField = null, startOffset = null)
+    selectionState = selectionState.copy(anchor = null, focus = null, segments = emptyList())
 }
 
 //Optionally cancel the selection.
 fun DocumentState.cancelSelection() {
-    selectionState = selectionState.copy(isActive = false, segments = emptyList())
+    selectionState = selectionState.copy(segments = emptyList())
 }
 
 // Helper function: Given a global offset (in Box coordinates) determine which text field is touched.
@@ -472,7 +628,7 @@ fun DocumentState.getGlobalCursorRect(
 // Called on Ctrl+A or via key handling to select everything.
 fun DocumentState.selectAll() {
     // Activate selection mode so that the overlay is drawn.
-    selectionState = selectionState.copy(isActive = true)
+    selectionState = selectionState.copy()
 
     // If no fields or parent coordinates exist, bail out.
     if (documentTextFieldList.isEmpty() || parentCoordinates.value.box == null) return
