@@ -6,67 +6,96 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.TextFieldValue
 import com.joeybasile.composewysiwyg.model.DocumentState
+import com.joeybasile.composewysiwyg.model.DocumentTextFieldState
 
-/**
- * Wraps text within a DocumentTextFieldState, splitting on newlines and width.
- * Each '\n' spawns a new field, and width overflow moves to the next line.
- */
+/*fun DocumentState. (fieldIndex: Int){
+
+}*/
+
 /*
-fun DocumentState.wrapTextField(
-    index: Int,
-    originalValue: TextFieldValue,
-    measurer: TextMeasurer,
-    textStyle: TextStyle,
-    maxWidthPx: Int,
-    isFirstCall: Boolean = true
-) {
-    // Split into fitting and overflow (handles newlines and width)
-    val (fitting, overflow) = splitAnnotatedString(
-        fullText = originalValue.annotatedString,
-        measurer = measurer,
-        textStyle = textStyle,
-        maxWidthPx = maxWidthPx
-    )
-
-    // Determine new selection for this field
-    val newSelection = when {
-        isFirstCall && originalValue.selection.start <= fitting.length -> TextRange(originalValue.selection.start)
-        else -> null
-    }
-
-    // Update this field's text and optional caret
-    val updated = if (newSelection != null) {
-        originalValue.copy(annotatedString = fitting, selection = newSelection)
-    } else {
-        originalValue.copy(annotatedString = fitting)
-    }
-    updateTextFieldValue(index, updated)
-
-    // No overflow => done
-    if (overflow.isEmpty()) return
-        // Ensure a next field exists
-    val nextIndex = index + 1
-    if (nextIndex >= documentTextFieldList.size) {
-        documentTextFieldList.add(nextIndex, makeField(AnnotatedString("")))
-    }
-
-    // Prepare next field's TextFieldValue
-    val base = documentTextFieldList[nextIndex].textFieldValue
-    val caretOffset = if (isFirstCall) originalValue.selection.start - fitting.length else null
-    val nextValue = base.copy(
-        annotatedString = overflow + base.annotatedString,
-        selection = caretOffset?.let { TextRange(it) } ?: base.selection
-    )
-    prependToFieldWithoutMovingCaret(nextIndex, nextValue)
-
-    // Recurse for further wrapping (only width if no more newlines)
-    wrapTextField(
-        index = nextIndex,
-        originalValue = nextValue,
-        measurer = measurer,
-        textStyle = textStyle,
-        maxWidthPx = maxWidthPx,
-        isFirstCall = false
-    )
+Field-specific reference.
+ */
+fun DocumentState.hasNewLineAtEnd(fieldIndex: Int): Boolean {
+    return documentTextFieldList[fieldIndex].hasNewLineAtEnd
 }
-*/
+
+fun DocumentState.isEmptyField(fieldIndex: Int): Boolean {
+    return documentTextFieldList[fieldIndex].isEmpty
+}
+
+fun DocumentState.isFirstField(fieldIndex: Int): Boolean {
+    return fieldIndex == 0
+}
+
+fun DocumentState.isLastField(fieldIndex: Int): Boolean {
+    return fieldIndex == documentTextFieldList.size
+}
+
+fun DocumentState.hasAboveField(fieldIndex: Int): Boolean {
+    return fieldIndex - 1 > -1
+}
+
+fun DocumentState.aboveFieldHasNewLineAtEnd(fieldIndex: Int): Boolean {
+    if (isValidFieldIndex(fieldIndex - 1)) {
+        return hasNewLineAtEnd(fieldIndex - 1)
+    } else return false
+}
+
+fun DocumentState.hasBelowField(fieldIndex: Int): Boolean {
+    return fieldIndex < documentTextFieldList.size - 1
+}
+
+fun DocumentState.getLastFieldIndex(): Int {
+    return documentTextFieldList.lastIndex
+}
+
+//Get the length of annotatedString for a particicular document
+fun DocumentState.getFieldMaxOffset(fieldIndex: Int): Int {
+    return documentTextFieldList[fieldIndex].textFieldValue.annotatedString.length
+}
+
+fun DocumentState.isValidFieldIndex(fieldIndex: Int): Boolean {
+    return documentTextFieldList.size > 0 && fieldIndex >= 0 && fieldIndex <= documentTextFieldList.size
+}
+
+fun DocumentState.isLineBreak(fieldIndex: Int): Boolean {
+    return hasAboveField(fieldIndex) &&
+            aboveFieldHasNewLineAtEnd(fieldIndex) &&
+            isEmptyField(fieldIndex) &&
+            hasNewLineAtEnd(fieldIndex)
+}
+
+/*
+Non field-specific reference
+ */
+fun DocumentState.isSingleFieldDocument(): Boolean {
+    return documentTextFieldList.size == 0
+}
+
+fun DocumentState.isGlobalCaretAtZeroOffsetOfField(): Boolean {
+    return caretState.value.offset == 0
+}
+
+fun DocumentState.isGlobalCaretAtMaxOffsetOfField(): Boolean {
+    return caretState.value.offset == documentTextFieldList[caretState.value.fieldIndex].textFieldValue.text.length - 1
+}
+
+fun DocumentState.isGlobalCaretAtFirstFieldIndex(): Boolean {
+    return caretState.value.fieldIndex == 0
+}
+
+fun DocumentState.isGlobalCaretAtLastFieldIndex(): Boolean {
+    return caretState.value.fieldIndex == getLastFieldIndex()
+}
+
+fun DocumentState.isGlobalCaretAtRoot(): Boolean {
+    return caretState.value.fieldIndex == 0 && caretState.value.offset == 0
+}
+
+fun DocumentState.getGlobalCaretOffset(): Int {
+    return caretState.value.offset
+}
+
+fun DocumentState.getGlobalCaretField(): Int {
+    return caretState.value.fieldIndex
+}
