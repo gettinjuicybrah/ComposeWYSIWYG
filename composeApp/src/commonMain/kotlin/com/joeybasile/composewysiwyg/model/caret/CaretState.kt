@@ -5,9 +5,9 @@ import androidx.compose.ui.geometry.Offset
 
 //CaretState to track global cursor
 data class CaretState(
-    var fieldIndex: Int, // Index of the active (BasicText)Field
-    var offset: Int, // (Character) offset within the field
-    var globalPosition: Offset, // Global x, y relative to Box coords.
-    var height: Float, // Default height
-    var isVisible: Boolean = true // For blinking (optional)
+    val fieldIndex: Int, // Index of the active (BasicText)Field
+    val offset: Int, // (Character) offset within the field
+    val globalPosition: Offset, // Global x, y relative to Box coords.
+    val height: Float, // Default height
+    val isVisible: Boolean = true // For blinking (optional)
 )

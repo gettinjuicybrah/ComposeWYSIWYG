@@ -4,6 +4,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.input.TextFieldValue
+import com.joeybasile.composewysiwyg.events.DocumentEvent.Caret.Direction
 
 /**
  * A sealed class representing all possible user or UI-driven events
@@ -11,6 +12,8 @@ import androidx.compose.ui.text.input.TextFieldValue
  */
 sealed class DocumentEvent {
     data class FocusChanged(val index: Int) : DocumentEvent()
+
+   object EnterPressed: DocumentEvent()
 
     object DocumentLayoutChanged : DocumentEvent()
 
@@ -20,9 +23,16 @@ sealed class DocumentEvent {
         data class CoordChanged(val index: Int, val coords: LayoutCoordinates): Text()
     }
     sealed class Selection : DocumentEvent() {
-        data class Start(val at: Offset)            : Selection()
-        data class Update(val to: Offset)           : Selection()
+        data class StartDrag(val at: Offset)            : Selection()
+        data class UpdateDrag(val to: Offset)           : Selection()
         object Finish                              : Selection()
+        data class StartShift(val direction: Direction) : Selection()
+        data class UpdateShift(val direction: Direction): Selection()
+        data class GoArrowDir(val direction: Direction) : Selection()
+        enum class Direction { Left, Right, Up, Down }
+        object NullifyState : Selection()
+        object RemoveSelection : Selection()
+        data class Paste(val text: String) : Selection()
     }
     data class CoordinatesUpdated(val type: CoordType, val coords: LayoutCoordinates) : DocumentEvent()
 

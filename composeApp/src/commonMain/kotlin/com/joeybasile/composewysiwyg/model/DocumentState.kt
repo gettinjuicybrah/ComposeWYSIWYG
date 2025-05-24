@@ -18,17 +18,18 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Constraints
 import com.joeybasile.composewysiwyg.events.DocumentEvent
 import com.joeybasile.composewysiwyg.model.caret.CaretState
+import com.joeybasile.composewysiwyg.model.caret.onCaretMoved
 import com.joeybasile.composewysiwyg.model.caret.updateCaretPosition
 import com.joeybasile.composewysiwyg.model.event.onEvent
 import com.joeybasile.composewysiwyg.model.selection.SelectionSegment
 import com.joeybasile.composewysiwyg.model.selection.SelectionState
 import com.joeybasile.composewysiwyg.util.sliceRange
 import kotlinx.coroutines.CoroutineScope
-
 
 /**
  * Creates and remembers the [DocumentState] instance.
@@ -74,6 +75,9 @@ class DocumentState(val scope: CoroutineScope) {
             height = 16f
         )
     )
+
+    val maxWidth: Int = 500
+
     var selectionState by mutableStateOf(SelectionState())
 
     // Internally maintain a mutable state list of text field states.
@@ -92,6 +96,7 @@ class DocumentState(val scope: CoroutineScope) {
     }
 
     fun updateFocusedLine(newIndex: Int) {
+        println("updateFocusedLine: $newIndex")
         focusedLine.value = newIndex
     }
 
@@ -126,19 +131,92 @@ class DocumentState(val scope: CoroutineScope) {
 
     }
 
+    /*
+    The purpose of this function is to flip the hasNewLineAtEnd flag
+    of the documentTextFieldList, specified by index.
+     */
+    fun flipNewLineAtEnd(index: Int) {
+        documentTextFieldList.set(
+            index,
+            element = documentTextFieldList[index].copy(hasNewLineAtEnd = !documentTextFieldList[index].hasNewLineAtEnd)
+        )
+    }
+
+    fun setNewLineAtEnd(index: Int) {
+        documentTextFieldList.set(
+            index,
+            element = documentTextFieldList[index].copy(hasNewLineAtEnd = true)
+        )
+    }
+
+    fun makeField(initial: AnnotatedString): DocumentTextFieldState =
+        DocumentTextFieldState(
+            textFieldValue = TextFieldValue(annotatedString = initial),
+            focusRequester = FocusRequester()
+        )
+
+    fun makeEmptyField(): DocumentTextFieldState =
+        DocumentTextFieldState(
+            textFieldValue = TextFieldValue(""),
+            focusRequester = FocusRequester()
+        )
+
+    fun makeFieldWithNewLine(initial: AnnotatedString): DocumentTextFieldState =
+        DocumentTextFieldState(
+            textFieldValue = TextFieldValue(annotatedString = initial),
+            focusRequester = FocusRequester(),
+            hasNewLineAtEnd = true
+        )
+
+    fun makeEmptyFieldWithNewLine(): DocumentTextFieldState =
+        DocumentTextFieldState(
+            textFieldValue = TextFieldValue(""),
+            focusRequester = FocusRequester(),
+            hasNewLineAtEnd = true
+        )
+
+    /*
+    Prepends an annotatedString to the annotatedString of an existing field's TextFieldValue.
+    Sets the selection's end and start to the length of the prefix via TextRange fxn.
+     */
+    fun prependToField(
+        index: Int,
+        prefix: AnnotatedString
+    ) {
+        val old = documentTextFieldList[index]
+        val combined = buildAnnotatedString {
+            append(prefix)
+            append(old.textFieldValue.annotatedString)
+        }
+        documentTextFieldList[index] = old.copy(
+            textFieldValue = old.textFieldValue.copy(
+                annotatedString = combined,
+                selection = TextRange(prefix.length)
+            )
+        )
+    }
+
+    /*
+    The selection is collapsed (start == end), and set to 0 by default.
+
+     */
     fun insertTextFieldAfter(index: Int) {
         // Create new DocumentTextFieldState.
         val newField = DocumentTextFieldState(
-            textFieldValue = TextFieldValue("pressed enter"),
+            textFieldValue = TextFieldValue(""),
+            //textFieldValue = TextFieldValue("pressed enter"),
             layoutCoordinates = null,
             textLayoutResult = null,
             focusRequester = FocusRequester()
         )
         documentTextFieldList.add(index + 1, newField)
 
-        // Optional: Adjust indices or any other state updates if necessary.
-        // You might also want to notify any focus manager or refresh the list.
     }
+
+    fun insertFieldAfter(index: Int, field: DocumentTextFieldState) {
+        documentTextFieldList.add(index + 1, field)
+    }
+
 
     /**
      * Updates the layout coordinates of the overall document container.
@@ -178,10 +256,13 @@ class DocumentState(val scope: CoroutineScope) {
             style = textStyle,
             constraints = Constraints(maxWidth = maxWidthPx)
         )
-        if (!result.didOverflowWidth) {
-            // all fits in one line
+
+        // if there's only one line, nothing to split
+        if (result.lineCount <= 1) {
             return fullText to AnnotatedString("")
         }
+
+        // otherwise line 0 ends at:
         val cutIndex = result.getLineEnd(0, visibleEnd = true)
         val fitting = fullText.sliceRange(0, cutIndex)
         val overflow = fullText.sliceRange(cutIndex, fullText.length)
@@ -199,6 +280,362 @@ class DocumentState(val scope: CoroutineScope) {
         documentTextFieldList.add(index, newField)
     }
 
+    fun processTextFieldValueUpdate(
+        index: Int,
+        newValue: TextFieldValue,
+        measurer: TextMeasurer,
+        textStyle: TextStyle,
+        maxWidthPx: Int
+    ) {
+        val result = measurer.measure(
+            text = newValue.annotatedString,
+            style = textStyle,
+            constraints = Constraints(maxWidth = maxWidthPx),
+            maxLines = 1,
+            softWrap = false
+        )
+        val xPos = maxWidth.toFloat() - Float.MIN_VALUE
+        val maxMeasuredOffset = result.getOffsetForPosition(Offset(xPos, 0f))
+
+        /*
+        If the TFV's annotated string did not overflow the max width constraint,
+        then update documentTextField[index].textFieldValue, which will set the global caret's offset to the local caret's, importantly.
+         */
+        if (!result.didOverflowWidth) {
+            updateTextFieldValue(index, newValue)
+            println("NO OVERFLOW in processTextFieldValueUpdate")
+            return
+        }
+
+        /*
+        Else, there was OF, meaning we need to split the annotated string into two. The left is what fit, the right is what caused the overflow.
+         */
+        else {
+            println("----------------OVERFLOW in processTextFieldValueUpdate")
+
+            val leftAnnotatedString = newValue.annotatedString.subSequence(
+                0,
+                maxMeasuredOffset
+            )
+            val rightAnnotatedString = newValue.annotatedString.subSequence(
+                maxMeasuredOffset,
+                newValue.annotatedString.length
+            )
+            //println("LEFT: $leftAnnotatedString")
+            //println("RIGHT: $rightAnnotatedString")
+            //If the local caret meets/exceeds the max then this implies the global caret will reside in a later field than the current.
+            if (newValue.selection.start >= maxMeasuredOffset) {
+                updateTextFieldValueNoCaret(index, newValue.copy(annotatedString = leftAnnotatedString))
+                println("BEGIN OUT OF BOUNDS CARET OF RECURSIVE CALL")
+                recurseTFVUpdate(
+                    index,
+                    index,
+                    rightAnnotatedString,
+                    measurer,
+                    textStyle,
+                    maxWidthPx,
+                    shouldUpdateCaret = true,
+                    initialOverflowLength = newValue.annotatedString.length - maxMeasuredOffset
+                )
+            }
+            //If the local caret is less than the max, then it is acceptable to eventually set the global caret to it for the current index.
+            else if (newValue.selection.start < maxMeasuredOffset) {
+                updateTextFieldValue(index, newValue.copy(annotatedString = leftAnnotatedString))
+                println("BEGIN ***IN BOUNDS** CARET RECURSIVE CALL")
+                recurseTFVUpdate(
+                    index,
+                    index,
+                    rightAnnotatedString,
+                    measurer,
+                    textStyle,
+                    maxWidthPx,
+                    shouldUpdateCaret = false,
+                    initialOverflowLength = newValue.annotatedString.length - maxMeasuredOffset
+                )
+            }
+        }
+    }
+
+    fun recurseTFVUpdate(
+        prevIndex: Int,
+        initialIndex: Int,
+        overflowAnnotatedString: AnnotatedString,
+        measurer: TextMeasurer,
+        textStyle: TextStyle,
+        maxWidthPx: Int,
+        shouldUpdateCaret: Boolean,
+        initialOverflowLength: Int = overflowAnnotatedString.length
+    ) {
+        println("entered recurseTFVUpdate. ")
+        val currentIndex = prevIndex + 1
+        println("CURRENT INDEX: $currentIndex in recursiveTFVUpdate. PREV INDEX: $prevIndex. OVERFLOW: $overflowAnnotatedString. SHOULD UPDATE CARET: $shouldUpdateCaret.")
+        //If the previous index was the last field, then we'll need to make a new one.
+        if (currentIndex >= documentTextFieldList.size) {
+            println("inserting new field at index: $currentIndex....")
+            insertFieldAfter(prevIndex, makeEmptyField())
+        }
+
+        //Next, prepend the overflow to the currentField's annotatedstring.
+        val combined = prependToAnnotatedStringAndGet(currentIndex, overflowAnnotatedString)
+        //Measure the updated annotatedString.
+        val result = measurer.measure(
+            text = combined,
+            style = textStyle,
+            constraints = Constraints(maxWidth = maxWidthPx),
+            maxLines = 1,
+            softWrap = false
+        )
+        val xPos = maxWidth.toFloat() - Float.MIN_VALUE
+        val maxMeasuredOffset = result.getOffsetForPosition(Offset(xPos, 0f))
+        val leftAnnotatedString = combined.subSequence(
+            0,
+            maxMeasuredOffset
+        )
+        val rightAnnotatedString = combined.subSequence(
+            maxMeasuredOffset,
+            combined.length
+        )
+        //If no OF, then we have arrived at base case.
+        if (!result.didOverflowWidth) {
+            println("BASE CASE REACHED IN RECURSE. SHOULD UPDATE CARETB AFTER BOUNCING RETURN.")
+            updateTextFieldValueNoCaret(
+                index = currentIndex,
+                newValue = documentTextFieldList[currentIndex].textFieldValue.copy(
+                    annotatedString = combined
+                )
+            )
+            if(shouldUpdateCaret) {
+                caretState.value = caretState.value.copy(
+                    fieldIndex = initialIndex + 1,
+                    offset = initialOverflowLength
+                )
+                onCaretMoved()
+
+            }
+            println("NO OVERFLOW IN RECURSE")
+            return
+        }
+
+        //else, we recurse through.
+        else {
+            println("BASE CASE NOT REACHED! OVERFLOW. RECURSING...")
+
+
+            updateTextFieldValueNoCaret(
+                index = currentIndex,
+                newValue = documentTextFieldList[currentIndex].textFieldValue.copy(
+                    annotatedString = leftAnnotatedString
+                )
+            )
+            recurseTFVUpdate(
+                prevIndex = currentIndex,
+                initialIndex = initialIndex,
+                overflowAnnotatedString = rightAnnotatedString,
+                measurer = measurer,
+                textStyle = textStyle,
+                maxWidthPx = maxWidthPx,
+                shouldUpdateCaret = shouldUpdateCaret,
+                initialOverflowLength  = initialOverflowLength
+            )
+
+        }
+
+    }
+
+    fun prependToAnnotatedStringAndGet(
+        index: Int,
+        prefix: AnnotatedString,
+    ): AnnotatedString {
+        println("entered prependToAnnotatedStringAndGet. index: $index. prefix: $prefix. oldValue: ${documentTextFieldList[index].textFieldValue.annotatedString}.")
+        val old = documentTextFieldList[index]
+        val combined = buildAnnotatedString {
+            append(prefix)
+            append(old.textFieldValue.annotatedString)
+        }
+        println("combined: $combined. returning...")
+        return combined
+    }
+
+    fun processNewTextFieldValue(
+        index: Int,
+        originalValue: TextFieldValue,
+        measurer: TextMeasurer,
+        textStyle: TextStyle,
+        maxWidthPx: Int
+    ) {
+
+        val result = measurer.measure(
+            text = originalValue.annotatedString,
+            style = textStyle,
+            constraints = Constraints(maxWidth = maxWidthPx),
+            maxLines = 1,
+            softWrap = false
+        )
+
+        //if no horizontal overflow, then just update the field's TextFieldValue.
+        if (!result.didOverflowWidth) {
+            updateTextFieldValue(index, originalValue)
+            println("NO OVERFLOW")
+        }
+
+        //If there was overflow, then this implies a need to split the annotatedstring, prepend the right overflow to next field (insert if non-existent), update global caret
+        else if (result.didOverflowWidth) {
+            println("----------------OVERFLOW")
+            // this is the count of characters that actually fit
+            val xPos = maxWidth.toFloat() - Float.MIN_VALUE
+            val visibleCharCount = result.getOffsetForPosition(Offset(xPos, 0f))
+
+
+            //fitting portion
+            val leftAnnotatedString = originalValue.annotatedString.subSequence(
+                0,
+                visibleCharCount
+            )
+            println("LEFT: $leftAnnotatedString")
+            //overflow portion
+            val rightAnnotatedString = originalValue.annotatedString.subSequence(
+                visibleCharCount,
+                originalValue.annotatedString.length
+            )
+            println("RIGHT: $rightAnnotatedString")
+
+            //Set the current field's TextFieldValue to the fitting portion.
+            updateTextFieldValue(
+                index,
+                newValue = originalValue.copy(annotatedString = leftAnnotatedString)
+            )
+            //If this field is the max field, then we need to insert a field below.
+            if (index == documentTextFieldList.size - 1) {
+                insertTextFieldAfter(index)
+                println("Field inserted****************")
+            }
+
+            val nextIndex = index + 1
+            val nextField = safeGet(documentTextFieldList, nextIndex) ?: return
+
+            //Now, we need to build a new annotated string with the overflow portion and the next field's annotatedstring.
+            prependToField(nextIndex, rightAnnotatedString)
+
+            val prependLength = leftAnnotatedString.length
+
+            //if the global caret is not at the end of the line, then we don't want to update it to be the next line, so we update as with a normal entry.
+            // if (caretState.value.offset == prependLength) {
+
+            //setting the field will cause the focused field to be updated. Setting the offset will have the caret be in the proper position, at the end of the OF text.
+            caretState.value = caretState.value.copy(
+                fieldIndex = nextIndex,
+                offset = prependLength
+            )
+            //Call this to cause side effects of updating caretState.
+            onCaretMoved()
+        }
+        // }
+
+
+    }
+
+    /**
+     * Handle a new TextFieldValue at [index], splitting off any overflow
+     * into subsequent fields.
+     */
+
+    fun wrapTextField(
+        index: Int,
+        originalValue: TextFieldValue,
+        measurer: TextMeasurer,
+        textStyle: TextStyle,
+        maxWidthPx: Int,
+        isFirstCall: Boolean = true
+    ) {
+        // split into what fits and what overflows
+        val (fitting, overflow) = splitAnnotatedString(
+            fullText = originalValue.annotatedString,
+            measurer = measurer,
+            textStyle = textStyle,
+            maxWidthPx = maxWidthPx
+        )
+
+        // figure out where the caret *should* be in this field
+        val newSelection = if (isFirstCall) {
+            val originalPos = originalValue.selection.start
+            if (originalPos <= fitting.length) {
+                // caret stays in this line, at the same relative position
+                TextRange(originalPos)
+            } else {
+                // caret belonged in the overflow region, so shift it into the next line
+                // we'll adjust it when we recurse
+                null
+            }
+        } else {
+            // for overflow lines, we don't touch the global caret at all
+            null
+        }
+
+        // update this line’s text (and only move the caret here if this is the first call)
+        val updatedValue = if (newSelection != null) {
+            originalValue.copy(
+                annotatedString = fitting,
+                selection = newSelection
+            )
+        } else {
+            originalValue.copy(annotatedString = fitting)
+        }
+        updateTextFieldValue(index, updatedValue)
+        println("OF: $overflow")
+        // if nothing overflowed, we’re done
+        if (overflow.isEmpty()) return
+
+        // ensure there *is* a next line
+        val nextIndex = index + 1
+        if (nextIndex >= documentTextFieldList.size) {
+            documentTextFieldList.add(nextIndex, makeField(AnnotatedString("")))
+        }
+
+        // compute the next line’s initial caret pos if it came from overflow
+        // only move the caret into the next field if the original selection was past the fitting text
+        val overflowCaretOffset =
+            if (isFirstCall && originalValue.selection.start > fitting.length) {
+                originalValue.selection.start - fitting.length
+            } else {
+                // if deeper recursion, we can ignore; caret is already set
+                null
+            }
+
+        // prepend the overflow and, if needed, set its selection
+        val nextValue = documentTextFieldList[nextIndex].textFieldValue
+            .let { base ->
+                base.copy(
+                    annotatedString = overflow + base.annotatedString,
+                    selection = overflowCaretOffset?.let { TextRange(it) } ?: base.selection
+                )
+            }
+        // here, use a helper that doesn’t re-sync the caret
+        //prependToFieldWithoutMovingCaret(nextIndex, nextValue)
+        updateTextFieldValue(nextIndex, nextValue)
+        //documentTextFieldList[nextIndex].focusRequester.requestFocus()
+        // recurse into the next line, but denote that it’s no longer the “first” call
+        wrapTextField(
+            index = nextIndex,
+            originalValue = nextValue,
+            measurer = measurer,
+            textStyle = textStyle,
+            maxWidthPx = maxWidthPx,
+            isFirstCall = false
+        )
+    }
+
+    /**
+     * Prepend text into the given field, updating only the documentTextFieldList
+     * and NOT syncing the global caret position.
+     */
+    fun prependToFieldWithoutMovingCaret(index: Int, newValue: TextFieldValue) {
+        // Guard against out-of-bounds
+        val field = safeGet(documentTextFieldList, index) ?: return
+
+        // Just replace the stored TextFieldValue—in particular, don't update caretState
+        documentTextFieldList[index] = field.copy(textFieldValue = newValue)
+    }
+
     /**
      * Updates the text value for a specific text field.
      *
@@ -208,9 +645,14 @@ class DocumentState(val scope: CoroutineScope) {
      * @param index The index of the text field to update.
      * @param newValue The new [TextFieldValue] for the text field.
      */
+
     //What this does: Updates the BTF’s textFieldValue and, if it’s the focused field, sets the global caret’s offset to the start of the new selection (where the local caret is after the user’s input).
     fun updateTextFieldValue(index: Int, newValue: TextFieldValue) {
-        documentTextFieldList[index] = documentTextFieldList[index].copy(textFieldValue = newValue)
+        //println("entered updateTextFieldValue")
+        // Check if the index is within bounds
+        val field = safeGet(documentTextFieldList, index) ?: return
+        //println("SAFELY GOT IN UPDATETEXTFIELDVALUE.")
+        documentTextFieldList[index] = field.copy(textFieldValue = newValue)
         // *** unconditionally sync the global caret to whatever the local selection now is ***
         caretState.value = caretState.value.copy(
             fieldIndex = index,
@@ -218,7 +660,8 @@ class DocumentState(val scope: CoroutineScope) {
         )
 
         // immediately recompute the global caret position on screen
-        updateCaretPosition()
+    onCaretMoved()
+    //updateCaretPosition()
 
         /*
         if (index == focusedLine.value) {
@@ -226,6 +669,13 @@ class DocumentState(val scope: CoroutineScope) {
         }
          */
     }
+
+    fun updateTextFieldValueNoCaret(index: Int, newValue: TextFieldValue) {
+        // Check if the index is within bounds
+        val field = safeGet(documentTextFieldList, index) ?: return
+        documentTextFieldList[index] = field.copy(textFieldValue = newValue)
+    }
+
 
     /**
      * Updates the text layout result for a specific text field.
@@ -237,11 +687,15 @@ class DocumentState(val scope: CoroutineScope) {
      * @param newResult The new [TextLayoutResult] generated from the text layout.
      */
     fun updateTextFieldTextLayoutResult(index: Int, newResult: TextLayoutResult) {
-        documentTextFieldList[index] =
-            documentTextFieldList[index].copy(textLayoutResult = newResult)
+        val field = safeGet(documentTextFieldList, index) ?: return
+        documentTextFieldList[index] = field.copy(textLayoutResult = newResult)
         if (caretState.value.fieldIndex == index) {
             updateCaretPosition()
         }
+    }
+
+    fun <T> safeGet(list: List<T>, index: Int): T? {
+        return if (index >= 0 && index < list.size) list[index] else null
     }
 
     /**
@@ -254,7 +708,8 @@ class DocumentState(val scope: CoroutineScope) {
      * @param coords The new [LayoutCoordinates] for the text field.
      */
     fun updateTextFieldCoords(index: Int, coords: LayoutCoordinates) {
-        documentTextFieldList[index] = documentTextFieldList[index].copy(layoutCoordinates = coords)
+        val field = safeGet(documentTextFieldList, index) ?: return
+        documentTextFieldList[index] = field.copy(layoutCoordinates = coords)
         if (caretState.value.fieldIndex == index) {
             updateCaretPosition()
         }

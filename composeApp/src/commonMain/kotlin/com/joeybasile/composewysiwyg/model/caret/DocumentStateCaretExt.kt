@@ -112,12 +112,16 @@ fun DocumentState.moveCaretUp() {
 What this does: After updating the global caret’s position and the focused field,
 it sets the focused BTF’s textFieldValue.selection to match the global caret’s offset,
 ensuring the local caret moves to the same position.
+
+IMPORTANT: focus can be updated.
  */
 fun DocumentState.onCaretMoved() {
     //println("```````````````````````````ENTERED onCaretMoved.")
     updateCaretPosition()// Updates the global caret position based on movement
     //println("^^^^^^^^^^^^updateCaretPosition JUST RETURNED.")
     val focusedIndex = caretState.value.fieldIndex
+    println("focusedIndex: $focusedIndex")
+    println("about to call updateFocusedLine() from onCaretMoved()")
     updateFocusedLine(focusedIndex) // Sets focusedLine.value to the new fieldIndex
     val focusedField = documentTextFieldList[focusedIndex]
     val newTextFieldValue = focusedField.textFieldValue.copy(
@@ -131,6 +135,7 @@ fun DocumentState.updateCaretIndex(index: Int){
     caretState.value = caret.copy(fieldIndex = index)
 }
 fun DocumentState.updateCaretPosition() {
+    //println("entered updateCaretPosition().")
     val caret = caretState.value
     //println("```````````````````````````IN updateCaretPosition(). line 448 ran. caret:${caret}")
     val field = documentTextFieldList.getOrNull(caret.fieldIndex) ?: return

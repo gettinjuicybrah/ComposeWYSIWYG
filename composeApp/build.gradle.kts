@@ -94,6 +94,7 @@ android {
 
 dependencies {
     implementation(libs.androidx.ui.text.android)
+    implementation(libs.androidx.ui.geometry.android)
     debugImplementation(compose.uiTooling)
 }
 

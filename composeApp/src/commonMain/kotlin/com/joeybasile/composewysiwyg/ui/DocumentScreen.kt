@@ -4,10 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.LocalTextStyle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -30,6 +32,7 @@ import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.joeybasile.composewysiwyg.events.DocumentEvent
 import com.joeybasile.composewysiwyg.model.DocumentState
@@ -37,9 +40,6 @@ import com.joeybasile.composewysiwyg.model.DocumentTextFieldState
 import com.joeybasile.composewysiwyg.model.caret.updateCaretPosition
 import com.joeybasile.composewysiwyg.model.event.onEvent
 import com.joeybasile.composewysiwyg.model.rememberDocumentState
-import com.joeybasile.composewysiwyg.model.selection.finishSelection
-import com.joeybasile.composewysiwyg.model.selection.startSelection
-import com.joeybasile.composewysiwyg.model.selection.updateSelection
 import com.joeybasile.composewysiwyg.util.handleDocKeyEvent
 import kotlin.math.sqrt
 
@@ -110,7 +110,7 @@ fun Document(
         // Capture the coordinates for the overall document.
         .onGloballyPositioned { coords ->
             state.onEvent(DocumentEvent.CoordinatesUpdated(DocumentEvent.CoordType.DOCUMENT, coords))
-            println("document $coords")
+            //println("document $coords")
         }
 
 ) {
@@ -158,7 +158,7 @@ Whenever the list is mutated, Compose will see that as “the snapshot this comp
             // Capture the coordinates for the Box container.
             .onGloballyPositioned { coords ->
                 state.onEvent(DocumentEvent.CoordinatesUpdated(DocumentEvent.CoordType.BOX, coords))
-                println("box $coords")
+               // println("box $coords")
             }
             .drawWithContent {
                 drawContent()
@@ -179,7 +179,7 @@ Whenever the list is mutated, Compose will see that as “the snapshot this comp
                 // Capture coordinates for the LazyColumn container.
                 .onGloballyPositioned { coords ->
                     state.onEvent(DocumentEvent.CoordinatesUpdated(DocumentEvent.CoordType.LAZY_COLUMN, coords))
-                    println("lazyCol $coords")
+                   // println("lazyCol $coords")
                 }
         ) {
             // Iterate over text fields using their index.
@@ -221,6 +221,8 @@ fun DocTextField(
     onKeyEvent: (KeyEvent, Int) -> Boolean,
     focusedLine: MutableState<Int>
 ) {
+    val measurer = rememberLineMeasurer()
+    val textStyle = LocalTextStyle.current
     var isFocused by remember { mutableStateOf(false) }
 
     // val isTooWide = layoutResult.size.width > state.maxWidthPx
@@ -231,7 +233,23 @@ fun DocTextField(
         value = entry.textFieldValue,
         // Delegate text change handling to the DocumentState.
         onValueChange = { newValue ->
-            state.onEvent(DocumentEvent.Text.Changed(index, newValue))
+
+            //state.onEvent(DocumentEvent.Text.Changed(index, newValue))
+/*
+            val result = measurer.measure(newValue.annotatedString, textStyle, constraints = Constraints(maxWidth = state.maxWidth), maxLines = 1, softWrap = false)
+            val xPos   = state.maxWidth.toFloat() - Float.MIN_VALUE
+            val offset = result.getOffsetForPosition(Offset(xPos, 0f))
+            println("measured width: ${result.size.width} for text: ${newValue.text} linecount: ${result.lineCount} and didOverflowWidth: ${result.didOverflowWidth}, and offset: $offset")
+*/
+            state.processTextFieldValueUpdate(
+                index = index,
+                newValue = newValue,
+                textStyle = textStyle,
+                maxWidthPx = state.maxWidth,
+                measurer = measurer
+            )
+
+
         },
         // Delegate capturing of text layout results (metrics like cursor position).
         onTextLayout = { layoutResult ->
@@ -244,6 +262,10 @@ fun DocTextField(
                     while (true) {
 
                         val down = awaitFirstDown(requireUnconsumed = false)
+
+                        //Always clear any existing selection on tap.
+                        state.onEvent(DocumentEvent.Selection.NullifyState)
+
                         // Get layout coordinates
                         val fieldCoords = entry.layoutCoordinates ?: continue
                         val boxCoords = state.parentCoordinates.value.box ?: continue
@@ -273,18 +295,21 @@ fun DocTextField(
                             if (!selectionTriggered && distance > 1f) {
                                 println("**********************************&&&&&&&&&&&dRAG STARTED: threshold met")
                                 println("START POS GLOBAL: $startPosGlobal")
-                                state.onEvent(DocumentEvent.Selection.Start(startPosGlobal))
+                                state.onEvent(DocumentEvent.Selection.StartDrag(startPosGlobal))
                                 selectionTriggered = true
                             }
                             if (selectionTriggered) {
-                                state.onEvent(DocumentEvent.Selection.Update(currentPosGlobal))
+                                state.onEvent(DocumentEvent.Selection.UpdateDrag(currentPosGlobal))
                             }
                             event.changes.forEach { it.consume() }
                         }
+                        /*
                         if (selectionTriggered) {
                             println("Selection finished")
                             state.onEvent(DocumentEvent.Selection.Finish)
                         }
+
+                         */
                     }
                 }
             }
@@ -292,6 +317,8 @@ fun DocTextField(
             // Update and store the layout coordinates for this field.
             .onGloballyPositioned { coords ->
                 state.onEvent(DocumentEvent.Text.CoordChanged(index, coords))
+                //println("${coords.size.width} WIDTH")
+
                 //state.updateTextFieldCoords(index, coords)
             }
             .onPreviewKeyEvent { event ->
@@ -301,7 +328,9 @@ fun DocTextField(
             .onFocusChanged {
                 if (it.isFocused) {
                     isFocused = true
-                    println("focus updated to index index")
+                    //maybe problematic
+                    state.onEvent(DocumentEvent.Selection.NullifyState)
+                    println("focus updated to index ${index}")
                     state.onEvent(DocumentEvent.FocusChanged(index))
                 } else {
                     isFocused = false
@@ -311,11 +340,19 @@ fun DocTextField(
                 color = if (isFocused) Color.LightGray else Color.Transparent,
                 shape = RoundedCornerShape(4.dp)
             ),
+            //.widthIn(max = state.maxWidth.dp),
         //This is to make the 'local' cursors transparent.
         cursorBrush = SolidColor(Color.Blue),
         singleLine = true,
 
     )
+    // Side-effect fires on *any* change to textFieldValue
+    /*
+    LaunchedEffect(entry.textFieldValue) {
+        // react to the new value, no matter how it was changed
+        println("Text is now: ${entry.textFieldValue.text}")
+        state.processNewTextFieldValue(index, entry.textFieldValue, measurer, textStyle, state.maxWidth)
+    }*/
 
     /*
     That little LaunchedEffect is there so that, any time your shared focusedLine.value changes, each DocTextField gets a chance to notice “hey—my index just became the focused one” and then imperatively call focusRequester.requestFocus(). In other words:
@@ -349,7 +386,7 @@ every recomposition (the key guards you) and it won’t fire on the wrong field 
     LaunchedEffect(focusedLine.value) {
         if (focusedLine.value == index && index < state.documentTextFieldList.size) {
             try {
-                //println("FOCUS REQUESTED IN BASICTEXTENTRY$index")
+                println("FOCUS REQUESTED IN BASICTEXTENTRY$index")
                 entry.focusRequester.requestFocus()
                 state.onEvent(DocumentEvent.UpdateCaretPosition)
             } catch (e: Exception) {
@@ -357,4 +394,5 @@ every recomposition (the key guards you) and it won’t fire on the wrong field 
             }
         }
     }
+
 }
