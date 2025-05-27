@@ -3,6 +3,8 @@ package com.joeybasile.composewysiwyg.model
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.TextFieldValue
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -25,5 +27,7 @@ data class DocumentTextFieldState (
     val textFieldValue: TextFieldValue, // current text state of the BTF,
     val focusRequester: FocusRequester,
     val hasNewLineAtEnd: Boolean = false, // true if \n at the end of a line.
-    val isEmpty: Boolean = false,
+    //val isEmpty: Boolean = false,
+    val textMeasurer: TextMeasurer? = null,
+    val textStyle: TextStyle? = null
 )

@@ -32,6 +32,8 @@ import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.joeybasile.composewysiwyg.events.DocumentEvent
@@ -39,6 +41,8 @@ import com.joeybasile.composewysiwyg.model.DocumentState
 import com.joeybasile.composewysiwyg.model.DocumentTextFieldState
 import com.joeybasile.composewysiwyg.model.caret.updateCaretPosition
 import com.joeybasile.composewysiwyg.model.event.onEvent
+import com.joeybasile.composewysiwyg.model.linewrap.setFieldTextMeasurer
+import com.joeybasile.composewysiwyg.model.linewrap.setFieldTextStyle
 import com.joeybasile.composewysiwyg.model.rememberDocumentState
 import com.joeybasile.composewysiwyg.util.handleDocKeyEvent
 import kotlin.math.sqrt
@@ -222,7 +226,9 @@ fun DocTextField(
     focusedLine: MutableState<Int>
 ) {
     val measurer = rememberLineMeasurer()
+    state.setFieldTextMeasurer(index, measurer)
     val textStyle = LocalTextStyle.current
+    state.setFieldTextStyle(index, textStyle)
     var isFocused by remember { mutableStateOf(false) }
 
     // val isTooWide = layoutResult.size.width > state.maxWidthPx
@@ -337,13 +343,29 @@ fun DocTextField(
                 }
             }
             .background(
-                color = if (isFocused) Color.LightGray else Color.Transparent,
+                color =
+                    (if (entry.hasNewLineAtEnd && isFocused) {
+                        Color(0x33FF0000)
+                    } else if(!isFocused && entry.hasNewLineAtEnd){
+                        Color.Magenta
+                    } else if(isFocused && !entry.hasNewLineAtEnd){
+                        Color.LightGray
+                    } else {
+                        Color.Transparent
+                    }) as Color
+                /*
+                    when {
+                    entry.hasNewLineAtEnd -> Color(0x33FF0000)  // semi-transparent red
+                    isFocused           -> Color.LightGray
+                    else                -> Color.Transparent
+                }*/,
+                //color = if (isFocused) Color.LightGray else Color.Transparent,
                 shape = RoundedCornerShape(4.dp)
             ),
             //.widthIn(max = state.maxWidth.dp),
         //This is to make the 'local' cursors transparent.
         cursorBrush = SolidColor(Color.Blue),
-        singleLine = true,
+        singleLine = true
 
     )
     // Side-effect fires on *any* change to textFieldValue

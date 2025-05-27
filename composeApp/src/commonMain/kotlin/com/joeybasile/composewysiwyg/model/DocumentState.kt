@@ -404,6 +404,7 @@ class DocumentState(val scope: CoroutineScope) {
                     annotatedString = combined
                 )
             )
+            println("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&UPDATED ANNOTATEDSTRING: ${combined}")
             if(shouldUpdateCaret) {
                 caretState.value = caretState.value.copy(
                     fieldIndex = initialIndex + 1,

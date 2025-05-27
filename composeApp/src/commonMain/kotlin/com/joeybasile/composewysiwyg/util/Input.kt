@@ -9,6 +9,8 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.TextFieldValue
 import com.joeybasile.composewysiwyg.events.DocumentEvent
 import com.joeybasile.composewysiwyg.model.DocumentState
@@ -19,13 +21,22 @@ import com.joeybasile.composewysiwyg.model.caret.moveCaretRight
 import com.joeybasile.composewysiwyg.model.caret.moveCaretUp
 import com.joeybasile.composewysiwyg.model.caret.onCaretMoved
 import com.joeybasile.composewysiwyg.model.event.onEvent
+import com.joeybasile.composewysiwyg.model.linewrap.getFieldTextMeasurer
+import com.joeybasile.composewysiwyg.model.linewrap.getFieldTextStyle
+import com.joeybasile.composewysiwyg.model.linewrap.getGlobalCaretField
+import com.joeybasile.composewysiwyg.model.linewrap.procBackspace
+import com.joeybasile.composewysiwyg.model.linewrap.processNewBackspace
 import com.joeybasile.composewysiwyg.model.selection.selectAll
 
 fun handleDocKeyEvent(
     event: KeyEvent,
-    state: DocumentState,
+    state: DocumentState
 ): Boolean {
-
+    if (event.type == KeyEventType.KeyDown && !state.selectionState.isActive && !event.isShiftPressed && event.key == Key.Backspace){
+        state.procBackspace(state.getFieldTextMeasurer(state.getGlobalCaretField()),
+            state.getFieldTextStyle(state.getGlobalCaretField()), state.maxWidth)
+        return true
+    }
     if (event.type == KeyEventType.KeyDown && state.selectionState.isActive && !event.isShiftPressed) {
 
         val dir = when (event.key) {
