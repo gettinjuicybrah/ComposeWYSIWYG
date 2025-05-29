@@ -41,7 +41,31 @@ fun DocumentState.onEvent(event: DocumentEvent) {
         is DocumentEvent.Selection.UpdateShift -> {
             updateShiftSelection(event.direction)
         }
+        is DocumentEvent.EnterPressed -> {
+            val idx = caretState.value.fieldIndex
+            val field = documentTextFieldList[idx]
+            val rawOffset = caretState.value.offset.coerceIn(0, field.textFieldValue.annotatedString.length)
+            val beforeAS  = field.textFieldValue.annotatedString.subSequence(0, rawOffset)
+            val afterAS   = field.textFieldValue.annotatedString.subSequence(rawOffset, field.textFieldValue.annotatedString.length)
 
+            // 1) overwrite current field with the “before” text
+            documentTextFieldList[idx] = field.copy(
+                textFieldValue = field.textFieldValue.copy(annotatedString = beforeAS)
+            )
+            setNewLineAtEnd(idx)
+
+            // 2) unconditionally insert a brand-new, empty field **below**
+            insertTextFieldAfter(idx)
+            val newIndex = idx + 1
+
+            // 3) put the “after” text into that fresh field
+            prependToField(newIndex, afterAS)
+
+            // 4) move the caret into the new line
+            caretState.value = caretState.value.copy(fieldIndex = newIndex, offset = 0)
+            onCaretMoved()
+        }
+/*
         is DocumentEvent.EnterPressed -> {
             val currentFieldIndex = caretState.value.fieldIndex
             val currentField = documentTextFieldList[currentFieldIndex]
@@ -92,6 +116,7 @@ fun DocumentState.onEvent(event: DocumentEvent) {
             )
             onCaretMoved()
         }
+        */
         is DocumentEvent.FocusChanged -> {
             updateFocusedLine(newIndex = event.index)
             // immediately recalc the caret
