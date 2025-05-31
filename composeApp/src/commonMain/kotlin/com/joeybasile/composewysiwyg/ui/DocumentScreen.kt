@@ -18,6 +18,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.focusRequester
@@ -49,11 +50,12 @@ import kotlin.math.sqrt
 
 @Composable
 fun DocumentWithSelectionOverlay(
-    state: DocumentState = rememberDocumentState(),
+    state: DocumentState,
     modifier: Modifier = Modifier
 ) {
     Box(
-        modifier = modifier.fillMaxSize()
+        modifier = modifier.fillMaxSize(),
+        //contentAlignment = Alignment.Center
     ) {
         // Your existing document renders the text fields inside a LazyColumn.
         Document(state = state, modifier = Modifier.matchParentSize())
@@ -227,7 +229,7 @@ fun DocTextField(
 ) {
     val measurer = rememberLineMeasurer()
     state.setFieldTextMeasurer(index, measurer)
-    val textStyle = LocalTextStyle.current
+    val textStyle = state.currentTextStyle.value
     state.setFieldTextStyle(index, textStyle)
     var isFocused by remember { mutableStateOf(false) }
 

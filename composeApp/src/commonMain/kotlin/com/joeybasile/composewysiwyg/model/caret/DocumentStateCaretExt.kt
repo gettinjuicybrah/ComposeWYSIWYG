@@ -1,8 +1,20 @@
 package com.joeybasile.composewysiwyg.model.caret
 
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import com.joeybasile.composewysiwyg.model.DocumentState
+import com.joeybasile.composewysiwyg.model.linewrap.isEmptyField
+import com.joeybasile.composewysiwyg.model.style.CurrentCharStyle
+import com.joeybasile.composewysiwyg.model.style.DefaultToolbarState
+import com.joeybasile.composewysiwyg.model.style.ToolbarState
+import com.joeybasile.composewysiwyg.model.style.getSpanStylesAt
+import com.joeybasile.composewysiwyg.model.style.hasSpanStyleAt
+import com.joeybasile.composewysiwyg.model.style.resetCurrentCharStyleToDefault
+import com.joeybasile.composewysiwyg.model.style.resetToolbarToDefault
 
 
 fun DocumentState.moveCaretRight() {
@@ -49,7 +61,7 @@ fun DocumentState.moveCaretDown() {
         )
     }
     //just move to the end of the line.
-    else{
+    else {
         val currentField = documentTextFieldList[caretState.value.fieldIndex]
         val currentLayoutResult = currentField.textLayoutResult ?: return
         caretState.value = caretState.value.copy(
@@ -129,11 +141,14 @@ fun DocumentState.onCaretMoved() {
     )
     documentTextFieldList[focusedIndex] = focusedField.copy(textFieldValue = newTextFieldValue)
     //println("```````````````````````````LEAVING onCaretMoved()")
+    updateStylesOnCaretMoved()
 }
-fun DocumentState.updateCaretIndex(index: Int){
+
+fun DocumentState.updateCaretIndex(index: Int) {
     val caret = caretState.value
     caretState.value = caret.copy(fieldIndex = index)
 }
+
 fun DocumentState.updateCaretPosition() {
     //println("entered updateCaretPosition().")
     val caret = caretState.value
@@ -144,7 +159,8 @@ fun DocumentState.updateCaretPosition() {
     val boxCoords = parentCoordinates.value.box ?: return
 
     // Calculate local cursor position within the text field
-    val localOffset = layoutResult.getCursorRect(caret.offset.coerceIn(0, layoutResult.layoutInput.text.length))
+    val localOffset =
+        layoutResult.getCursorRect(caret.offset.coerceIn(0, layoutResult.layoutInput.text.length))
     val localX = localOffset.left
     val localY = localOffset.top
     //println("-------------updateCARETPOS X:$localX")
@@ -161,4 +177,85 @@ fun DocumentState.updateCaretPosition() {
     // Update caret state with calculated values
     caretState.value = caret.copy(globalPosition = globalOffset, height = height.coerceAtLeast(16f))
     //println("```````````````````````````LEAVING updateCaretPosition()")
+    //updateStylesOnCaretMoved()
+}
+
+fun DocumentState.updateStylesOnCaretMoved() {
+    println("updateStylesOnCaretMoved()")
+    resetToolbarToDefault()
+    resetCurrentCharStyleToDefault()
+    if (caretState.value.offset == 0 || isEmptyField(caretState.value.fieldIndex)){
+        println("caret offset 0 or is empty field.")
+        return
+    }
+
+
+    val currentFieldAS =
+        documentTextFieldList[caretState.value.fieldIndex].textFieldValue.annotatedString
+    val currentCharOffset = caretState.value.offset - 1
+    if (!currentFieldAS.hasSpanStyleAt(currentCharOffset)){
+        println("has default styling.")
+        return
+    }
+    println("CUSTOM STYLING INBOUNDDDD")
+
+    val spanStyles = currentFieldAS.getSpanStylesAt(currentCharOffset)
+    //Now, here, we need a fxn where given a list of spanstyles, we mutate the toolbarstate and the currentcharstylestate to match the styles.
+
+    // start from your default toolbar state as a SpanStyle
+    val defaultTB = DefaultToolbarState()
+    var merged = SpanStyle(
+        fontFamily = defaultTB.font,
+        fontSize = defaultTB.fontSize,
+        color = defaultTB.textColor,
+        background = defaultTB.textHighlightColor,
+        fontWeight = if (defaultTB.isBold) FontWeight.Bold else FontWeight.Normal,
+        fontStyle = if (defaultTB.isItalic) FontStyle.Italic else FontStyle.Normal,
+        textDecoration = listOfNotNull(
+            defaultTB.isUnderline.let { if (it) TextDecoration.Underline else null },
+            defaultTB.isStrikethrough.let { if (it) TextDecoration.LineThrough else null }
+        ).takeIf { it.isNotEmpty() }?.let { TextDecoration.combine(it) }
+    )
+
+    // merge in each SpanStyle override
+    spanStyles.forEach { merged = merged.merge(it) }
+
+    // 3) peel back into your two states
+    val newToolbar = ToolbarState(
+        font = merged.fontFamily,
+        fontSize = merged.fontSize,
+        textColor = merged.color,
+        textHighlightColor = merged.background,
+        isBold = merged.fontWeight == FontWeight.Bold,
+        isItalic = merged.fontStyle == FontStyle.Italic,
+        isUnderline = merged.textDecoration
+            ?.contains(TextDecoration.Underline) == true,
+        isStrikethrough = merged.textDecoration
+            ?.contains(TextDecoration.LineThrough) == true
+    )
+
+    val newCharStyle = CurrentCharStyle(
+        font = merged.fontFamily,
+        fontSize = merged.fontSize,
+        textColor = merged.color,
+        textHighlightColor = merged.background,
+        isBold = merged.fontWeight == FontWeight.Bold,
+        isItalic = merged.fontStyle == FontStyle.Italic,
+        isUnderline = merged.textDecoration
+            ?.contains(TextDecoration.Underline) == true,
+        isStrikethrough = merged.textDecoration
+            ?.contains(TextDecoration.LineThrough) == true
+    )
+
+    toolbarState.value = newToolbar
+    currentCharStyle.value = newCharStyle
+}
+
+
+fun DocumentState.updateToolbarStateOnCaretMoved() {
+
+}
+
+fun DocumentState.updateCurrentCharStyleStateOnCaretMoved() {
+
 }

@@ -12,6 +12,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
@@ -19,15 +20,21 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.sp
 import com.joeybasile.composewysiwyg.events.DocumentEvent
+import com.joeybasile.composewysiwyg.model.style.CurrentCharStyle
+import com.joeybasile.composewysiwyg.model.style.ToolbarState
 import com.joeybasile.composewysiwyg.model.caret.CaretState
 import com.joeybasile.composewysiwyg.model.caret.onCaretMoved
 import com.joeybasile.composewysiwyg.model.caret.updateCaretPosition
 import com.joeybasile.composewysiwyg.model.event.onEvent
-import com.joeybasile.composewysiwyg.model.selection.SelectionSegment
 import com.joeybasile.composewysiwyg.model.selection.SelectionState
+import com.joeybasile.composewysiwyg.model.style.resetCurrentCharStyleToDefault
+import com.joeybasile.composewysiwyg.model.style.resetToolbarToDefault
 import com.joeybasile.composewysiwyg.util.sliceRange
 import kotlinx.coroutines.CoroutineScope
 
@@ -67,6 +74,37 @@ fun rememberDocumentState(): DocumentState {
  * @property scope A [CoroutineScope] that can be used for asynchronous operations if needed.
  */
 class DocumentState(val scope: CoroutineScope) {
+
+    val defaultTextStyle = TextStyle.Default
+
+    //initialized with default TextStyle value.
+    var currentTextStyle = mutableStateOf(defaultTextStyle)
+
+    val defaultCharStyle = CurrentCharStyle(
+        font = FontFamily.Default,
+        fontSize = 16.sp,
+        textColor = Color.Black,
+        textHighlightColor = Color.Unspecified,
+        isBold = false,
+        isItalic = false,
+        isUnderline = false,
+        isStrikethrough = false
+    )
+
+    val defaultToolbarState = ToolbarState(
+    font = FontFamily.Default,
+    fontSize = 16.sp,
+    textColor = Color.Black,
+    textHighlightColor = Color.Unspecified,
+    isBold = false,
+    isItalic = false,
+    isUnderline = false,
+    isStrikethrough = false
+    )
+    var currentCharStyle = mutableStateOf(defaultCharStyle)
+
+    var toolbarState = mutableStateOf(defaultToolbarState)
+
     var caretState = mutableStateOf(
         CaretState(
             fieldIndex = 0,
@@ -325,7 +363,10 @@ class DocumentState(val scope: CoroutineScope) {
             //println("RIGHT: $rightAnnotatedString")
             //If the local caret meets/exceeds the max then this implies the global caret will reside in a later field than the current.
             if (newValue.selection.start >= maxMeasuredOffset) {
-                updateTextFieldValueNoCaret(index, newValue.copy(annotatedString = leftAnnotatedString))
+                updateTextFieldValueNoCaret(
+                    index,
+                    newValue.copy(annotatedString = leftAnnotatedString)
+                )
                 println("BEGIN OUT OF BOUNDS CARET OF RECURSIVE CALL")
                 recurseTFVUpdate(
                     index,
@@ -405,7 +446,7 @@ class DocumentState(val scope: CoroutineScope) {
                 )
             )
             println("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&UPDATED ANNOTATEDSTRING: ${combined}")
-            if(shouldUpdateCaret) {
+            if (shouldUpdateCaret) {
                 caretState.value = caretState.value.copy(
                     fieldIndex = initialIndex + 1,
                     offset = initialOverflowLength
@@ -436,7 +477,7 @@ class DocumentState(val scope: CoroutineScope) {
                 textStyle = textStyle,
                 maxWidthPx = maxWidthPx,
                 shouldUpdateCaret = shouldUpdateCaret,
-                initialOverflowLength  = initialOverflowLength
+                initialOverflowLength = initialOverflowLength
             )
 
         }
@@ -661,8 +702,8 @@ class DocumentState(val scope: CoroutineScope) {
         )
 
         // immediately recompute the global caret position on screen
-    onCaretMoved()
-    //updateCaretPosition()
+        onCaretMoved()
+        //updateCaretPosition()
 
         /*
         if (index == focusedLine.value) {

@@ -52,4 +52,6 @@ sealed class DocumentEvent {
 
     /** UI is requesting that field `index` be programmatically focused. */
     data class RequestFieldFocus(val index: Int) : DocumentEvent()
+
+    enum class CharStyleType {BOLD, ITALIC, UNDERLINE, STRIKETHROUGH}
 }
