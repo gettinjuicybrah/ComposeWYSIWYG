@@ -45,6 +45,35 @@ fun AnnotatedString.applySpanStyles(range: IntRange, styles: List<SpanStyle>): A
 }
 
 /**
+ * Returns a new AnnotatedString with [styles] applied over the span [from, to).
+ *
+ * Note:
+ *  - `from` must be ≥ 0.
+ *  - `to` must be ≤ text.length.
+ *  - `from` must be < `to` (non‐empty).
+ */
+fun AnnotatedString.applySpanStyles(
+    from: Int,
+    to: Int,
+    styles: List<SpanStyle>
+): AnnotatedString {
+    require(from >= 0 && to <= text.length && from <= to) {
+        "Invalid span: from=$from, to=$to, for text length=${text.length}"
+    }
+
+    return AnnotatedString.Builder(this).apply {
+        styles.forEach { style ->
+            // `addStyle` uses [start, end) semantics, so no +1 needed on `to`.
+            addStyle(
+                style = style,
+                start = from,
+                end = to
+            )
+        }
+    }.toAnnotatedString()
+}
+
+/**
  * Adds a bold span to the specified [range] within this AnnotatedString.
  */
 fun AnnotatedString.addBold(range: IntRange): AnnotatedString = buildAnnotatedString {

@@ -11,6 +11,7 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.unit.dp
 import com.joeybasile.composewysiwyg.model.DocumentState
 import com.joeybasile.composewysiwyg.model.style.*
@@ -56,6 +57,10 @@ fun BoldButton(state:DocumentState, toolbarState: MutableState<ToolbarState>) {
             state.toggleBold()
             println("AFTER BOLD CLICKED. isBold: ${toolbarState.value.isBold}")
                   },
+
+        modifier = Modifier
+            // <-- Prevent this Button from ever taking focus:
+            .focusProperties { canFocus = false },
         colors = ButtonDefaults.buttonColors(
             backgroundColor = if (toolbarState.value.isBold) MaterialTheme.colors.primary else MaterialTheme.colors.surface,
             contentColor = if (toolbarState.value.isBold) MaterialTheme.colors.onPrimary else MaterialTheme.colors.onSurface
@@ -70,6 +75,9 @@ fun BoldButton(state:DocumentState, toolbarState: MutableState<ToolbarState>) {
 fun ItalicButton(state: DocumentState, toolbarState: MutableState<ToolbarState>) {
     Button(
         onClick = { state.toggleItalic() },
+        modifier = Modifier
+            // <-- Prevent this Button from ever taking focus:
+            .focusProperties { canFocus = false },
         colors = ButtonDefaults.buttonColors(
             backgroundColor = if (toolbarState.value.isItalic) MaterialTheme.colors.primary else MaterialTheme.colors.surface,
             contentColor = if (toolbarState.value.isItalic) MaterialTheme.colors.onPrimary else MaterialTheme.colors.onSurface
@@ -85,6 +93,9 @@ fun ItalicButton(state: DocumentState, toolbarState: MutableState<ToolbarState>)
 fun UnderlineButton(state: DocumentState, toolbarState: MutableState<ToolbarState>) {
     Button(
         onClick = { state.toggleUnderline() },
+        modifier = Modifier
+            // <-- Prevent this Button from ever taking focus:
+            .focusProperties { canFocus = false },
         colors = ButtonDefaults.buttonColors(
             backgroundColor = if (toolbarState.value.isUnderline) MaterialTheme.colors.primary else MaterialTheme.colors.surface,
             contentColor = if (toolbarState.value.isUnderline) MaterialTheme.colors.onPrimary else MaterialTheme.colors.onSurface
@@ -100,6 +111,9 @@ fun UnderlineButton(state: DocumentState, toolbarState: MutableState<ToolbarStat
 fun StrikethroughButton(state: DocumentState, toolbarState: MutableState<ToolbarState>) {
     Button(
         onClick = { state.toggleStrikethrough() },
+        modifier = Modifier
+            // <-- Prevent this Button from ever taking focus:
+            .focusProperties { canFocus = false },
         colors = ButtonDefaults.buttonColors(
             backgroundColor = if (toolbarState.value.isStrikethrough) MaterialTheme.colors.primary else MaterialTheme.colors.surface,
             contentColor = if (toolbarState.value.isStrikethrough) MaterialTheme.colors.onPrimary else MaterialTheme.colors.onSurface
@@ -113,7 +127,10 @@ fun StrikethroughButton(state: DocumentState, toolbarState: MutableState<Toolbar
 @Composable
 fun ClearFormatButton(state: DocumentState) {
     Button(
-        onClick = { state.clearFormat() }
+        onClick = { state.clearFormat() },
+        modifier = Modifier
+            // <-- Prevent this Button from ever taking focus:
+            .focusProperties { canFocus = false }
     ) {
         Text("Clear Formatting")
     }

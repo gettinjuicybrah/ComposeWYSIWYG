@@ -377,6 +377,48 @@ fun DocumentState.handleRemoveSelection() {
     finishSelection()
     onCaretMoved()
 }
+
+fun DocumentState.removeSelectedTextWithoutFinishingSelection(){
+    // if there's no real selection, bail
+    val merge = mergeSelection() ?: return
+
+    // prepare the new TextFieldValue for the start field
+    val oldValue = documentTextFieldList[merge.startField].textFieldValue
+    val newValue = oldValue.copy(
+        annotatedString = merge.merged,
+        // collapse at the start of the removed region
+        selection       = TextRange(merge.collapseOffset)
+    )
+
+    // 4) Use updateTextFieldValue so Compose re-renders this one field immediately
+    updateTextFieldValue(merge.startField, newValue)
+
+    // 5) Now remove any fully-deleted fields in reverse order
+    if (merge.endField > merge.startField) {
+        for (i in merge.endField downTo (merge.startField + 1)) {
+            documentTextFieldList.removeAt(i)
+        }
+    }
+    val original = caretState.value
+
+    setAnchorCaret(
+        SelectionCaretState(
+            fieldIndex = original.fieldIndex,
+            offset = original.offset,
+            globalPosition = original.globalPosition
+        )
+    )
+    setFocusCaret(
+        SelectionCaretState(
+            fieldIndex = original.fieldIndex,
+            offset = original.offset,
+            globalPosition = original.globalPosition
+        )
+    )
+    selectionState = selectionState.copy(segments = emptyList())
+
+}
+
 /*
 fun DocumentState.handleRemoveSelection() {
     // 1) grab and normalize carets

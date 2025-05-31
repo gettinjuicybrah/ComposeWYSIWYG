@@ -182,10 +182,11 @@ fun DocumentState.updateCaretPosition() {
 
 fun DocumentState.updateStylesOnCaretMoved() {
     println("updateStylesOnCaretMoved()")
-    resetToolbarToDefault()
-    resetCurrentCharStyleToDefault()
+
     if (caretState.value.offset == 0 || isEmptyField(caretState.value.fieldIndex)){
         println("caret offset 0 or is empty field.")
+        //resetToolbarToDefault()
+        //resetCurrentCharStyleToDefault()
         return
     }
 
@@ -194,6 +195,8 @@ fun DocumentState.updateStylesOnCaretMoved() {
         documentTextFieldList[caretState.value.fieldIndex].textFieldValue.annotatedString
     val currentCharOffset = caretState.value.offset - 1
     if (!currentFieldAS.hasSpanStyleAt(currentCharOffset)){
+        //resetToolbarToDefault()
+        //resetCurrentCharStyleToDefault()
         println("has default styling.")
         return
     }

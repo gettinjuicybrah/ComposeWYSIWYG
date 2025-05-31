@@ -11,7 +11,7 @@ data class ToolbarState(
     val fontSize: TextUnit? = null,
     val textColor: Color? = null,
     val textHighlightColor: Color? = null,
-    val isBold: Boolean = false,
+    val isBold: Boolean = true,
     val isItalic: Boolean = false,
     val isUnderline: Boolean = false,
     val isStrikethrough: Boolean = false

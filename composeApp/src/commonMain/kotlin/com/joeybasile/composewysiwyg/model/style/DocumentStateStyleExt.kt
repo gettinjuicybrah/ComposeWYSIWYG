@@ -1,8 +1,14 @@
 package com.joeybasile.composewysiwyg.model.style
 
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.TextUnit
 import com.joeybasile.composewysiwyg.events.DocumentEvent
 import com.joeybasile.composewysiwyg.model.DocumentState
@@ -127,22 +133,72 @@ fun DocumentState.setFontSize(fontSize: TextUnit){
 fun DocumentState.clearFormat(){
     if(selectionState.isActive){
         setSelectionToDefaultStyling()
-        setToolbarStateToDefault()
+        resetToolbarToDefault()
     }
     else{
-
-        setCharStyleToDefault()
-        setToolbarStateToDefault()
+        resetToolbarToDefault()
+        resetCurrentCharStyleToDefault()
     }
 }
 
-fun DocumentState.setCharStyleToDefault(){
 
-}
-fun DocumentState.setToolbarStateToDefault(){
-
-}
 
 fun DocumentState.setSelectionToDefaultStyling(){
+
+}
+
+
+
+fun DocumentState.pasteIntoFieldAtCaretOffsetNoNewlinesConsidered(
+    initialFieldIndex: Int,
+    initialCaretOffset: Int,
+    annotatedStringToBePasted: AnnotatedString,
+    measurer: TextMeasurer,
+    textStyle: TextStyle,
+    maxWidthPx: Int
+){
+    //1 First, split the existing annotatedString into L and R.
+    val initialString = documentTextFieldList[initialFieldIndex].textFieldValue.annotatedString
+    val initialLength = initialString.length
+    val leftInitialString = initialString.subSequence(0, initialCaretOffset)
+    val rightInitialString = initialString.subSequence(0, initialLength)
+
+    //2 Now, let's build a new string with the 'annotatedStringToBePasted' in the center.
+    val updatedString = buildAnnotatedString {
+        append(leftInitialString)
+        append(annotatedStringToBePasted)
+        append(rightInitialString)
+    }
+
+    //3 Now that we have this updated string with our to-be-pasted content inn the center, let's measure it and see if any OF occured.
+    val result = measurer.measure(
+        text = updatedString,
+        style = textStyle,
+        constraints = Constraints(maxWidth = maxWidthPx),
+        maxLines = 1,
+        softWrap = false
+    )
+
+    //4 Now, we need to see if there's any OF. If there's none, we can just update the textfield. If this fxn was invoked via selection, we can now recalculate the segments and redraw the selection highlight.
+    if(!result.didOverflowWidth){
+        updateTextFieldValueNoCaret(
+            index = initialFieldIndex,
+            newValue = documentTextFieldList[initialFieldIndex].textFieldValue.copy(annotatedString = updatedString)
+        )
+    } else {
+
+        val xPos = maxWidth.toFloat() - Float.MIN_VALUE
+        val maxMeasuredOffset = result.getOffsetForPosition(Offset(xPos, 0f))
+
+        val leftAnnotatedString = updatedString.subSequence(
+            0,
+            maxMeasuredOffset
+        )
+        val rightAnnotatedString = updatedString.subSequence(
+            maxMeasuredOffset,
+            initialLength
+        )
+
+    }
 
 }

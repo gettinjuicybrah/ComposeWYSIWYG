@@ -15,13 +15,17 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
@@ -33,6 +37,7 @@ import com.joeybasile.composewysiwyg.model.caret.onCaretMoved
 import com.joeybasile.composewysiwyg.model.caret.updateCaretPosition
 import com.joeybasile.composewysiwyg.model.event.onEvent
 import com.joeybasile.composewysiwyg.model.selection.SelectionState
+import com.joeybasile.composewysiwyg.model.style.applySpanStyles
 import com.joeybasile.composewysiwyg.model.style.resetCurrentCharStyleToDefault
 import com.joeybasile.composewysiwyg.model.style.resetToolbarToDefault
 import com.joeybasile.composewysiwyg.util.sliceRange
@@ -92,14 +97,14 @@ class DocumentState(val scope: CoroutineScope) {
     )
 
     val defaultToolbarState = ToolbarState(
-    font = FontFamily.Default,
-    fontSize = 16.sp,
-    textColor = Color.Black,
-    textHighlightColor = Color.Unspecified,
-    isBold = false,
-    isItalic = false,
-    isUnderline = false,
-    isStrikethrough = false
+        font = FontFamily.Default,
+        fontSize = 16.sp,
+        textColor = Color.Black,
+        textHighlightColor = Color.Unspecified,
+        isBold = false,
+        isItalic = false,
+        isUnderline = false,
+        isStrikethrough = false
     )
     var currentCharStyle = mutableStateOf(defaultCharStyle)
 
@@ -317,6 +322,95 @@ class DocumentState(val scope: CoroutineScope) {
         )
         documentTextFieldList.add(index, newField)
     }
+    fun applyCurrentCharStyleToProposedTFV(
+        prevValue: TextFieldValue,
+        proposedNewValue: TextFieldValue
+    ): TextFieldValue {
+        // 1) Extract raw text from each AnnotatedString
+        val oldAnnotated: AnnotatedString = prevValue.annotatedString
+        val newRawText: String = proposedNewValue.annotatedString.text
+
+        // 2) Confirm that exactly some new chunk was appended (or inserted)
+        //    at “diffStart”. We’ll find that offset:
+        var diffStart = 0
+        val oldText = oldAnnotated.text
+        while (diffStart < oldText.length && oldText[diffStart] == newRawText[diffStart]) {
+            diffStart++
+        }
+        // diffLength = how many new chars appeared:
+        val diffLength = newRawText.length - oldText.length
+        val diffEnd = diffStart + diffLength  // exclusive
+
+        // 3) Build the merged SpanStyle (bold/italic/underline as per currentCharStyle)
+        val currentCS = currentCharStyle.value  // wherever you store it
+        val mergedSpan = SpanStyle(
+            fontFamily = currentCS.font,
+            fontSize   = currentCS.fontSize!!,
+            color      = currentCS.textColor!!,
+            background = currentCS.textHighlightColor!!,
+            fontWeight = if (currentCS.isBold) FontWeight.Bold else FontWeight.Normal,
+            fontStyle  = if (currentCS.isItalic) FontStyle.Italic else FontStyle.Normal,
+            textDecoration = listOfNotNull(
+                currentCS.isUnderline.takeIf { it }?.let { TextDecoration.Underline },
+                currentCS.isStrikethrough.takeIf { it }?.let { TextDecoration.LineThrough }
+            ).takeIf { it.isNotEmpty() }?.let { TextDecoration.combine(it) }
+        )
+
+        // 4) Now: we want a new AnnotatedString that “starts from oldAnnotated,
+        //    but has the freshly typed substring [diffStart..diffEnd) styled.”
+        //
+        //    Easiest approach: build a NEW AnnotatedString in three chunks:
+        //    (a) prefix = oldAnnotated[0 until diffStart]         (with all its old spans)
+        //    (b) inserted = newRawText.substring(diffStart, diffEnd) (apply mergedSpan over it)
+        //    (c) suffix = oldAnnotated[diffStart until oldLength] (with all its old spans, but must shift offsets by diffLength)
+        //
+        //    However, Compose’s `AnnotatedString.Builder( base = oldAnnotated )` can preserve existing spans “in place,”
+        //    but only if the text content in the Builder’s base matches exactly the final text. Here, the final text is “old + inserted”.
+        //    So we can’t literally feed `Builder(oldAnnotated)` because its base text is the old text (e.g. “abcd”),
+        //    but our new text might be “abXcd” (one letter inserted in the middle)—the lengths don’t match.
+
+        // 5) Instead, do a manual rebuild:
+        //    5a) prefixAnnotated preserves old spans in [0..diffStart).
+        val prefixAnnotated = oldAnnotated.subSequence(0, diffStart)
+
+        //    5b) suffixAnnotated preserves old spans in [diffStart..oldText.length),
+        //         but those spans need to get their start/end “shifted down” by diffStart.
+        //         The easiest way: take oldAnnotated.subSequence(diffStart, oldText.length), which is an AnnotatedString
+        //         that already contains the spans (local to that slice!). Because `subSequence(...)` automatically
+        //         maps the old spans into the new coordinate system [0..(suffixLength)).
+        val suffixAnnotated = oldAnnotated.subSequence(diffStart, oldText.length)
+
+        //    5c) insertedText = newRawText.substring(diffStart, diffEnd) → plain String
+        val insertedPlain = newRawText.substring(diffStart, diffEnd)
+
+        // 6) Now we re-assemble:
+        val rebuilt = buildAnnotatedString {
+            // 6a) append the prefix (+ its spans)
+            append(prefixAnnotated)
+
+            // 6b) append the newly typed text *with* our mergedSpan over [0..insertedPlain.length)
+            val insertionStartInBuilder = length  // this should be “diffStart”
+            append(insertedPlain)
+            addStyle(
+                style = mergedSpan,
+                start = insertionStartInBuilder,
+                end   = insertionStartInBuilder + insertedPlain.length
+            )
+
+            // 6c) append the suffix (+ its spans). BUT! We have to shift suffix spans by “insertion length” automatically.
+            //     The builder will notice that when you do `append(suffixAnnotated)`, it copies over all of `suffixAnnotated`’s
+            //     spans and *adds* them at an offset of exactly `lengthBeforeAppendSuffix`. In other words,
+            //     if `suffixAnnotated` had a span [0..3), after we do `append(suffixAnnotated)` at position P,
+            //     the builder will place that suffix’s spans at [P..P+3). That is exactly “shift by diffStart + insertedLength.”
+            append(suffixAnnotated)
+        }
+
+        // 7) Now `rebuilt` holds all the old spans (split correctly around diffStart), plus one new SpanStyle exactly around the inserted text.
+
+        // 8) Finally, return a brand-new TextFieldValue that carries over any composition/cursor from `proposedNewValue`,
+        //    except we overwrite the `annotatedString` with our freshly built one.
+        return proposedNewValue.copy(annotatedString = rebuilt)
+    }
 
     fun processTextFieldValueUpdate(
         index: Int,
@@ -340,6 +434,7 @@ class DocumentState(val scope: CoroutineScope) {
         then update documentTextField[index].textFieldValue, which will set the global caret's offset to the local caret's, importantly.
          */
         if (!result.didOverflowWidth) {
+            println("THESE ARE THE SPANSTYLES FOR THE ANNOTATEDSTRING: ${newValue.annotatedString.spanStyles}")
             updateTextFieldValue(index, newValue)
             println("NO OVERFLOW in processTextFieldValueUpdate")
             return
@@ -694,7 +789,12 @@ class DocumentState(val scope: CoroutineScope) {
         // Check if the index is within bounds
         val field = safeGet(documentTextFieldList, index) ?: return
         //println("SAFELY GOT IN UPDATETEXTFIELDVALUE.")
-        documentTextFieldList[index] = field.copy(textFieldValue = newValue)
+        val newTFV = field.textFieldValue.copy(
+            annotatedString = newValue.annotatedString, selection = newValue.selection
+        )
+        documentTextFieldList[index] = field.copy(
+            textFieldValue = newTFV
+        )
         // *** unconditionally sync the global caret to whatever the local selection now is ***
         caretState.value = caretState.value.copy(
             fieldIndex = index,
