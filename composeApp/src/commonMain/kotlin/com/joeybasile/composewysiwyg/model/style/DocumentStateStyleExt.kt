@@ -129,26 +129,6 @@ fun DocumentState.setFontSize(fontSize: TextUnit){
     }
 }
 
-
-fun DocumentState.clearFormat(){
-    if(selectionState.isActive){
-        setSelectionToDefaultStyling()
-        resetToolbarToDefault()
-    }
-    else{
-        resetToolbarToDefault()
-        resetCurrentCharStyleToDefault()
-    }
-}
-
-
-
-fun DocumentState.setSelectionToDefaultStyling(){
-
-}
-
-
-
 fun DocumentState.pasteIntoFieldAtCaretOffsetNoNewlinesConsidered(
     initialFieldIndex: Int,
     initialCaretOffset: Int,

@@ -83,7 +83,7 @@ private fun DocumentState.computeAdjacentCaret(
     }
 }
 
-private fun DocumentState.rebuildSelectionFromAnchorAndFocus() {
+public fun DocumentState.rebuildSelectionFromAnchorAndFocus() {
     val a = selectionState.anchor!!  // immutable origin
     val f = selectionState.focus!!   // current frontier
     // Derive startField/startOffset from 'a'
@@ -310,7 +310,7 @@ private fun DocumentState.computeSegmentsBetween(
     return segments
 }
 // 1) A tiny data class to carry our merge info:
-private data class MergeResult(
+data class MergeResult(
     val startField: Int,
     val endField: Int,
     val merged: AnnotatedString,
@@ -318,7 +318,7 @@ private data class MergeResult(
 )
 
 // 2) Pull out the merge logic into its own function
-private fun DocumentState.mergeSelection(): MergeResult? {
+fun DocumentState.mergeSelection(): MergeResult? {
     val a = selectionState.anchor ?: return null
     val f = selectionState.focus  ?: return null
     // normalize so start ≤ end in document order

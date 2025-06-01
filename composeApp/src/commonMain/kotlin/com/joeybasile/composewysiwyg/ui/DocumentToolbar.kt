@@ -12,7 +12,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.unit.dp
+import com.joeybasile.composewysiwyg.events.DocumentEvent
 import com.joeybasile.composewysiwyg.model.DocumentState
 import com.joeybasile.composewysiwyg.model.style.*
 import com.joeybasile.composewysiwyg.model.style.ToolbarState
@@ -20,6 +22,7 @@ import com.joeybasile.composewysiwyg.model.style.ToolbarState
 @Composable
 fun DocumentToolbar(
     state: DocumentState,
+    textMeasurer: TextMeasurer,
     modifier: Modifier = Modifier
 ) {
 
@@ -30,31 +33,32 @@ fun DocumentToolbar(
         val toolbarState = state.toolbarState
         //FontListDropdown(state, state.toolbarState.value)
         //FontSizeListDropdown(state, state.toolbarState.value)
-        BoldButton(state, toolbarState)
-        ItalicButton(state, toolbarState)
-        UnderlineButton(state, toolbarState)
-        StrikethroughButton(state, toolbarState)
-        ClearFormatButton(state)
+        BoldButton(state, toolbarState, textMeasurer)
+        ItalicButton(state, toolbarState, textMeasurer)
+        UnderlineButton(state, toolbarState, textMeasurer)
+        StrikethroughButton(state, toolbarState, textMeasurer)
+        ClearFormatButton(state, textMeasurer)
     }
 }
 
 @Composable
-fun FontListDropdown(state: DocumentState, toolbarState: ToolbarState) {
+fun FontListDropdown(state: DocumentState, toolbarState: ToolbarState, textMeasurer: TextMeasurer) {
 Text("to be font list")
 }
 
 @Composable
-fun FontSizeListDropdown(state: DocumentState, toolbarState: ToolbarState) {
+fun FontSizeListDropdown(state: DocumentState, toolbarState: ToolbarState, textMeasurer: TextMeasurer) {
 Text("to be font size list")
 }
 
 @Composable
-fun BoldButton(state:DocumentState, toolbarState: MutableState<ToolbarState>) {
+fun BoldButton(state:DocumentState, toolbarState: MutableState<ToolbarState>, textMeasurer: TextMeasurer) {
 
     Button(
         onClick = {
             println("RIGHT BEFORE BOLD CLICKED. isBold: ${toolbarState.value.isBold}")
-            state.toggleBold()
+            //state.toggleBold()
+            state.doToggle(DocumentEvent.CharStyleType.BOLD, textMeasurer)
             println("AFTER BOLD CLICKED. isBold: ${toolbarState.value.isBold}")
                   },
 
@@ -72,9 +76,11 @@ fun BoldButton(state:DocumentState, toolbarState: MutableState<ToolbarState>) {
     }
 }
 @Composable
-fun ItalicButton(state: DocumentState, toolbarState: MutableState<ToolbarState>) {
+fun ItalicButton(state: DocumentState, toolbarState: MutableState<ToolbarState>, textMeasurer: TextMeasurer) {
     Button(
-        onClick = { state.toggleItalic() },
+        onClick = {
+            //state.toggleItalic()
+            state.doToggle(DocumentEvent.CharStyleType.ITALIC, textMeasurer)},
         modifier = Modifier
             // <-- Prevent this Button from ever taking focus:
             .focusProperties { canFocus = false },
@@ -90,9 +96,9 @@ fun ItalicButton(state: DocumentState, toolbarState: MutableState<ToolbarState>)
 }
 
 @Composable
-fun UnderlineButton(state: DocumentState, toolbarState: MutableState<ToolbarState>) {
+fun UnderlineButton(state: DocumentState, toolbarState: MutableState<ToolbarState>, textMeasurer: TextMeasurer) {
     Button(
-        onClick = { state.toggleUnderline() },
+        onClick = { state.doToggle(DocumentEvent.CharStyleType.UNDERLINE, textMeasurer) },
         modifier = Modifier
             // <-- Prevent this Button from ever taking focus:
             .focusProperties { canFocus = false },
@@ -108,9 +114,9 @@ fun UnderlineButton(state: DocumentState, toolbarState: MutableState<ToolbarStat
 }
 
 @Composable
-fun StrikethroughButton(state: DocumentState, toolbarState: MutableState<ToolbarState>) {
+fun StrikethroughButton(state: DocumentState, toolbarState: MutableState<ToolbarState>, textMeasurer: TextMeasurer) {
     Button(
-        onClick = { state.toggleStrikethrough() },
+        onClick = { state.doToggle(DocumentEvent.CharStyleType.STRIKETHROUGH, textMeasurer) },
         modifier = Modifier
             // <-- Prevent this Button from ever taking focus:
             .focusProperties { canFocus = false },
@@ -125,9 +131,9 @@ fun StrikethroughButton(state: DocumentState, toolbarState: MutableState<Toolbar
     }
 }
 @Composable
-fun ClearFormatButton(state: DocumentState) {
+fun ClearFormatButton(state: DocumentState, textMeasurer: TextMeasurer) {
     Button(
-        onClick = { state.clearFormat() },
+        onClick = { state.clearFormat(textMeasurer) },
         modifier = Modifier
             // <-- Prevent this Button from ever taking focus:
             .focusProperties { canFocus = false }
