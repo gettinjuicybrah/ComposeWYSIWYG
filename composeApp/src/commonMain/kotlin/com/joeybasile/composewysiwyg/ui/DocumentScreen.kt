@@ -18,6 +18,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.focusRequester
@@ -34,6 +35,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.joeybasile.composewysiwyg.events.DocumentEvent
@@ -49,11 +51,12 @@ import kotlin.math.sqrt
 
 @Composable
 fun DocumentWithSelectionOverlay(
-    state: DocumentState = rememberDocumentState(),
+    state: DocumentState,
     modifier: Modifier = Modifier
 ) {
     Box(
-        modifier = modifier.fillMaxSize()
+        modifier = modifier.fillMaxSize(),
+        //contentAlignment = Alignment.Center
     ) {
         // Your existing document renders the text fields inside a LazyColumn.
         Document(state = state, modifier = Modifier.matchParentSize())
@@ -113,7 +116,12 @@ fun Document(
 
         // Capture the coordinates for the overall document.
         .onGloballyPositioned { coords ->
-            state.onEvent(DocumentEvent.CoordinatesUpdated(DocumentEvent.CoordType.DOCUMENT, coords))
+            state.onEvent(
+                DocumentEvent.CoordinatesUpdated(
+                    DocumentEvent.CoordType.DOCUMENT,
+                    coords
+                )
+            )
             //println("document $coords")
         }
 
@@ -162,7 +170,7 @@ Whenever the list is mutated, Compose will see that as “the snapshot this comp
             // Capture the coordinates for the Box container.
             .onGloballyPositioned { coords ->
                 state.onEvent(DocumentEvent.CoordinatesUpdated(DocumentEvent.CoordType.BOX, coords))
-               // println("box $coords")
+                // println("box $coords")
             }
             .drawWithContent {
                 drawContent()
@@ -182,8 +190,13 @@ Whenever the list is mutated, Compose will see that as “the snapshot this comp
             modifier = Modifier
                 // Capture coordinates for the LazyColumn container.
                 .onGloballyPositioned { coords ->
-                    state.onEvent(DocumentEvent.CoordinatesUpdated(DocumentEvent.CoordType.LAZY_COLUMN, coords))
-                   // println("lazyCol $coords")
+                    state.onEvent(
+                        DocumentEvent.CoordinatesUpdated(
+                            DocumentEvent.CoordType.LAZY_COLUMN,
+                            coords
+                        )
+                    )
+                    // println("lazyCol $coords")
                 }
         ) {
             // Iterate over text fields using their index.
@@ -227,7 +240,7 @@ fun DocTextField(
 ) {
     val measurer = rememberLineMeasurer()
     state.setFieldTextMeasurer(index, measurer)
-    val textStyle = LocalTextStyle.current
+    val textStyle = state.currentTextStyle.value
     state.setFieldTextStyle(index, textStyle)
     var isFocused by remember { mutableStateOf(false) }
 
@@ -241,15 +254,30 @@ fun DocTextField(
         onValueChange = { newValue ->
 
             //state.onEvent(DocumentEvent.Text.Changed(index, newValue))
-/*
-            val result = measurer.measure(newValue.annotatedString, textStyle, constraints = Constraints(maxWidth = state.maxWidth), maxLines = 1, softWrap = false)
-            val xPos   = state.maxWidth.toFloat() - Float.MIN_VALUE
-            val offset = result.getOffsetForPosition(Offset(xPos, 0f))
-            println("measured width: ${result.size.width} for text: ${newValue.text} linecount: ${result.lineCount} and didOverflowWidth: ${result.didOverflowWidth}, and offset: $offset")
-*/
+            /*
+                        val result = measurer.measure(newValue.annotatedString, textStyle, constraints = Constraints(maxWidth = state.maxWidth), maxLines = 1, softWrap = false)
+                        val xPos   = state.maxWidth.toFloat() - Float.MIN_VALUE
+                        val offset = result.getOffsetForPosition(Offset(xPos, 0f))
+                        println("measured width: ${result.size.width} for text: ${newValue.text} linecount: ${result.lineCount} and didOverflowWidth: ${result.didOverflowWidth}, and offset: $offset")
+            */
+            val oldValue = entry.textFieldValue
+            var updatedNewValue = newValue
+            if (newValue.text.length > oldValue.text.length) {
+                println("UPDATED NEW VALUE****************************************************************************")
+                println("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&& updatedNewValue: $updatedNewValue")
+                updatedNewValue = state.applyCurrentCharStyleToProposedTFV(
+                    prevValue = oldValue,
+                    proposedNewValue = newValue
+                )
+            }
+            println("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&& prevValue ${oldValue}")
+            println("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&& newValue: $newValue")
+
+            println("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
             state.processTextFieldValueUpdate(
                 index = index,
-                newValue = newValue,
+                newValue = updatedNewValue,
+                //newValue = newValue,
                 textStyle = textStyle,
                 maxWidthPx = state.maxWidth,
                 measurer = measurer
@@ -280,7 +308,8 @@ fun DocTextField(
                         val startPosGlobal = boxCoords.localPositionOf(fieldCoords, startPosLocal)
                         println("DOWN event at global position: $startPosGlobal")
 
-                        val fieldAndOffsetForClick = state.getFieldAndOffsetForPosition(startPosGlobal)
+                        val fieldAndOffsetForClick =
+                            state.getFieldAndOffsetForPosition(startPosGlobal)
 
 
                         var selectionTriggered = false
@@ -346,9 +375,9 @@ fun DocTextField(
                 color =
                     (if (entry.hasNewLineAtEnd && isFocused) {
                         Color(0x33FF0000)
-                    } else if(!isFocused && entry.hasNewLineAtEnd){
+                    } else if (!isFocused && entry.hasNewLineAtEnd) {
                         Color.Magenta
-                    } else if(isFocused && !entry.hasNewLineAtEnd){
+                    } else if (isFocused && !entry.hasNewLineAtEnd) {
                         Color.LightGray
                     } else {
                         Color.Transparent
@@ -362,7 +391,7 @@ fun DocTextField(
                 //color = if (isFocused) Color.LightGray else Color.Transparent,
                 shape = RoundedCornerShape(4.dp)
             ),
-            //.widthIn(max = state.maxWidth.dp),
+        //.widthIn(max = state.maxWidth.dp),
         //This is to make the 'local' cursors transparent.
         cursorBrush = SolidColor(Color.Blue),
         singleLine = true

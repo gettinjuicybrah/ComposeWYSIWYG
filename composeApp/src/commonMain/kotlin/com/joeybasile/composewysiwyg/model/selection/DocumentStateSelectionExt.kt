@@ -83,7 +83,7 @@ private fun DocumentState.computeAdjacentCaret(
     }
 }
 
-private fun DocumentState.rebuildSelectionFromAnchorAndFocus() {
+public fun DocumentState.rebuildSelectionFromAnchorAndFocus() {
     val a = selectionState.anchor!!  // immutable origin
     val f = selectionState.focus!!   // current frontier
     // Derive startField/startOffset from 'a'
@@ -310,7 +310,7 @@ private fun DocumentState.computeSegmentsBetween(
     return segments
 }
 // 1) A tiny data class to carry our merge info:
-private data class MergeResult(
+data class MergeResult(
     val startField: Int,
     val endField: Int,
     val merged: AnnotatedString,
@@ -318,7 +318,7 @@ private data class MergeResult(
 )
 
 // 2) Pull out the merge logic into its own function
-private fun DocumentState.mergeSelection(): MergeResult? {
+fun DocumentState.mergeSelection(): MergeResult? {
     val a = selectionState.anchor ?: return null
     val f = selectionState.focus  ?: return null
     // normalize so start ≤ end in document order
@@ -377,6 +377,48 @@ fun DocumentState.handleRemoveSelection() {
     finishSelection()
     onCaretMoved()
 }
+
+fun DocumentState.removeSelectedTextWithoutFinishingSelection(){
+    // if there's no real selection, bail
+    val merge = mergeSelection() ?: return
+
+    // prepare the new TextFieldValue for the start field
+    val oldValue = documentTextFieldList[merge.startField].textFieldValue
+    val newValue = oldValue.copy(
+        annotatedString = merge.merged,
+        // collapse at the start of the removed region
+        selection       = TextRange(merge.collapseOffset)
+    )
+
+    // 4) Use updateTextFieldValue so Compose re-renders this one field immediately
+    updateTextFieldValue(merge.startField, newValue)
+
+    // 5) Now remove any fully-deleted fields in reverse order
+    if (merge.endField > merge.startField) {
+        for (i in merge.endField downTo (merge.startField + 1)) {
+            documentTextFieldList.removeAt(i)
+        }
+    }
+    val original = caretState.value
+
+    setAnchorCaret(
+        SelectionCaretState(
+            fieldIndex = original.fieldIndex,
+            offset = original.offset,
+            globalPosition = original.globalPosition
+        )
+    )
+    setFocusCaret(
+        SelectionCaretState(
+            fieldIndex = original.fieldIndex,
+            offset = original.offset,
+            globalPosition = original.globalPosition
+        )
+    )
+    selectionState = selectionState.copy(segments = emptyList())
+
+}
+
 /*
 fun DocumentState.handleRemoveSelection() {
     // 1) grab and normalize carets
