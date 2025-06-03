@@ -1,7 +1,5 @@
 package com.joeybasile.composewysiwyg.util
 
-
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -9,12 +7,8 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isShiftPressed
-import androidx.compose.ui.text.TextMeasurer
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.input.TextFieldValue
 import com.joeybasile.composewysiwyg.events.DocumentEvent
 import com.joeybasile.composewysiwyg.model.DocumentState
-import com.joeybasile.composewysiwyg.model.DocumentTextFieldState
 import com.joeybasile.composewysiwyg.model.caret.moveCaretDown
 import com.joeybasile.composewysiwyg.model.caret.moveCaretLeft
 import com.joeybasile.composewysiwyg.model.caret.moveCaretRight
@@ -25,16 +19,17 @@ import com.joeybasile.composewysiwyg.model.linewrap.getFieldTextMeasurer
 import com.joeybasile.composewysiwyg.model.linewrap.getFieldTextStyle
 import com.joeybasile.composewysiwyg.model.linewrap.getGlobalCaretField
 import com.joeybasile.composewysiwyg.model.linewrap.procBackspace
-import com.joeybasile.composewysiwyg.model.linewrap.processNewBackspace
 import com.joeybasile.composewysiwyg.model.selection.selectAll
 
 fun handleDocKeyEvent(
     event: KeyEvent,
     state: DocumentState
 ): Boolean {
-    if (event.type == KeyEventType.KeyDown && !state.selectionState.isActive && !event.isShiftPressed && event.key == Key.Backspace){
-        state.procBackspace(state.getFieldTextMeasurer(state.getGlobalCaretField()),
-            state.getFieldTextStyle(state.getGlobalCaretField()), state.maxWidth)
+    if (event.type == KeyEventType.KeyDown && !state.selectionState.isActive && !event.isShiftPressed && event.key == Key.Backspace) {
+        state.procBackspace(
+            state.getFieldTextMeasurer(state.getGlobalCaretField()),
+            state.getFieldTextStyle(state.getGlobalCaretField()), state.maxWidth
+        )
         return true
     }
     if (event.type == KeyEventType.KeyDown && state.selectionState.isActive && !event.isShiftPressed) {
@@ -58,8 +53,6 @@ fun handleDocKeyEvent(
         //   • for Backspace/Delete the default deletion will now act on the collapsed caret
         return true
 
-
-
     }
 
     if (event.type == KeyEventType.KeyDown && event.isShiftPressed) {
@@ -82,7 +75,6 @@ fun handleDocKeyEvent(
 
     if (event.isCtrlPressed && event.key == Key.A) {
         state.selectAll()
-        return true  // Consume the event.
     }
     when (event.type) {
         KeyEventType.KeyDown -> when (event.key) {
@@ -125,10 +117,9 @@ fun handleDocKeyEvent(
 
             else -> return false
         }
-        // Optionally, you can add handling for KeyDown or other types
+
         else -> {
             return false
         }
     }
-    return false
 }

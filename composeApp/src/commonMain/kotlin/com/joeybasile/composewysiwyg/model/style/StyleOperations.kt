@@ -147,6 +147,8 @@ fun DocumentState.applyStyleToSelection(
     val insertionFieldIndex = mergeInfo.startField
     val insertionOffset = mergeInfo.collapseOffset
 
+    println("LINE 147 IN STYLEOPERTATIONS APPLYSTYLETOSELECTION().  insertionFieldIndex: ${insertionFieldIndex}, insertionOffset: ${insertionOffset}")
+
     val fieldForInsertion = documentTextFieldList[insertionFieldIndex]
     val prefix = fieldForInsertion.textFieldValue.annotatedString.sliceRange(0, insertionOffset)
     val suffix = fieldForInsertion.textFieldValue.annotatedString.sliceRange(insertionOffset, fieldForInsertion.textFieldValue.annotatedString.length)
@@ -168,12 +170,22 @@ fun DocumentState.applyStyleToSelection(
 
     val constraints = Constraints(maxWidth = this.maxWidth)
     val defaultStyle = getFieldTextStyle(documentTextFieldList[currentProcFieldIndex]) // Use style of the line being processed
-
+    var loopCount = 0
     while (remainingContentToDistribute != null && currentProcFieldIndex < documentTextFieldList.size) {
+        println("--------------------------------------------------------------------------")
+        println("")
+        println("")
+        println("LOOP COUNT WHILE LOOP LINE 174: $loopCount")
+        println("")
+        println("")
+        println("--------------------------------------------------------------------------")
+        loopCount++
         val field = documentTextFieldList[currentProcFieldIndex]
         val textToMeasure = remainingContentToDistribute ?: field.textFieldValue.annotatedString // Should always be remainingContentToDistribute
 
-        val measureResult = textMeasurer.measure(textToMeasure, style = defaultStyle, constraints = constraints)
+        val measureResult = textMeasurer.measure(textToMeasure, style = defaultStyle, constraints = constraints,
+            maxLines = 1,
+            softWrap = false)
 
         val explicitNewlineIndex = textToMeasure.text.indexOf('\n')
         var breakByNewline = false
@@ -181,40 +193,49 @@ fun DocumentState.applyStyleToSelection(
         var overflowPart: AnnotatedString? = null
 
         if (measureResult.didOverflowWidth || explicitNewlineIndex != -1) {
+            println("measureResult.didOverflowWidth || explicitNewlineIndex != -1")
             val measuredEndVisible = measureResult.getLineEnd(0, visibleEnd = true)
             val cutIndex: Int
 
             if (explicitNewlineIndex != -1 && explicitNewlineIndex < measuredEndVisible) {
+                println("   explicitNewlineIndex != -1 && explicitNewlineIndex < measuredEndVisible")
                 // Explicit newline occurs before or at visual overflow point
                 cutIndex = explicitNewlineIndex + 1 // Split after the newline
                 breakByNewline = true
             } else if (measureResult.didOverflowWidth) {
+                println("   measureResult.didOverflowWidth")
                 // Visual overflow occurs, or explicit newline is after visual overflow
                 cutIndex = measuredEndVisible
                 breakByNewline = false // Overflow, not necessarily a newline at the break point
                 // Check if the fitting part *itself* ends in a newline
                 if (textToMeasure.sliceRange(0, cutIndex).text.endsWith('\n')) {
+                    println("       textToMeasure.sliceRange(0, cutIndex).text.endsWith('\\n')")
                     breakByNewline = true
                 }
             } else { // Only explicit newline, no overflow yet (e.g. "abc\ndef")
+                println("   else instead of measureResult.didOverflowWidth || explicitNewlineIndex != -1")
                 cutIndex = explicitNewlineIndex + 1
                 breakByNewline = true
             }
 
-            if (cutIndex < textToMeasure.length) {
+            if (cutIndex <= textToMeasure.length) {
+                println("if cutIndex < textToMeasure.length")
                 fittingPart = textToMeasure.sliceRange(0, cutIndex)
                 overflowPart = textToMeasure.sliceRange(cutIndex, textToMeasure.length)
             } else { // cutIndex is at or beyond length, means everything fits or ends exactly
+                println("else instead of cutIndex < textToMeasure.length")
                 fittingPart = textToMeasure
                 overflowPart = null
                 if (fittingPart.text.endsWith('\n')) breakByNewline = true
             }
         } else { // No overflow and no explicit newlines in remainingContentToDistribute
+            println("else instead of measureResult.didOverflowWidth || explicitNewlineIndex != -1")
+            println(overflowPart?.text)
             fittingPart = textToMeasure
             overflowPart = null
             if (fittingPart.text.endsWith('\n')) breakByNewline = true
         }
-
+println("QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ")
         updateTextFieldValueNoCaret(currentProcFieldIndex, field.textFieldValue.copy(annotatedString = fittingPart))
         documentTextFieldList[currentProcFieldIndex] = documentTextFieldList[currentProcFieldIndex].copy(hasNewLineAtEnd = breakByNewline)
 
@@ -240,11 +261,15 @@ fun DocumentState.applyStyleToSelection(
             // If the last processed line ended with an explicit newline and there's no overflow,
             // ensure an empty line exists after it for typical editor behavior.
             documentTextFieldList.add(makeEmptyField())
+            println("END LOOP BECAUSE breakByNewline && remainingContentToDistribute == null && currentProcFieldIndex == documentTextFieldList.lastIndex")
             remainingContentToDistribute = null // End loop
         }
         else {
+            println("END LOOP BECAUSE ELSE. remainingContentToDist: ${remainingContentToDistribute} ")
+
             remainingContentToDistribute = null // End loop
         }
+        println("currentProcField: ${currentProcFieldIndex} and docTFL size: ${documentTextFieldList.size}")
     }
     // Trim any excess empty fields that might have been added speculatively or left over from prior state
     while (documentTextFieldList.size > 1 && documentTextFieldList.last().textFieldValue.annotatedString.isEmpty() && !documentTextFieldList[documentTextFieldList.lastIndex -1].hasNewLineAtEnd) {
@@ -297,6 +322,7 @@ fun DocumentState.applyStyleToSelection(
 
     // Get global positions for the new anchor and focus
     val newAnchorGlobalPos = getGlobalCursorRectForCaretState(newAnchorLogicalField, newAnchorLogicalOffset)?.topLeft ?: androidx.compose.ui.geometry.Offset.Zero
+    println("333333333333333333333333333333333 IN LINE 300 IN STYLEOPERATIONS. APPLYSTYLETOSELECTION(). newFocusLogicalField: ${newFocusLogicalField} AND newFocusLogicalOffset: ${newFocusLogicalOffset}")
     val newFocusGlobalPos = getGlobalCursorRectForCaretState(newFocusLogicalField, newFocusLogicalOffset)?.topLeft ?: androidx.compose.ui.geometry.Offset.Zero
 
     val finalAnchorCaret = SelectionCaretState(newAnchorLogicalField, newAnchorLogicalOffset, newAnchorGlobalPos)
@@ -331,6 +357,7 @@ private fun DocumentState.getFieldTextStyle(fieldState: DocumentTextFieldState?)
 }
 // Helper to get global cursor rect for a potential caret position
 private fun DocumentState.getGlobalCursorRectForCaretState(fieldIndex: Int, offset: Int): androidx.compose.ui.geometry.Rect? {
+    println("&&&&&&&&&&&&&&&&&&&&&&&&&&&&**********9999999999999999999 LINE 334 IN STYLEOPERATIONS. fieldIndex: ${fieldIndex} AND offset: $offset")
     if (fieldIndex < 0 || fieldIndex >= documentTextFieldList.size) return null
     val field = documentTextFieldList[fieldIndex]
     val boxCoords = parentCoordinates.value.box ?: return null
