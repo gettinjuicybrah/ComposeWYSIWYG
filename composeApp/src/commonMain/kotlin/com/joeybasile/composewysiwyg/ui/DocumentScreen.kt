@@ -73,7 +73,6 @@ fun SelectionOverlay(
     Box(
         modifier = modifier
             .fillMaxSize()
-
             .drawWithContent {
                 drawContent()
                 state.selectionState.segments.forEach { segment ->
@@ -100,7 +99,7 @@ fun SelectionOverlay(
  * @param modifier A [Modifier] applied to the top-level container.
  */
 @Composable
-fun Document(
+fun Documenqt(
     state: DocumentState,
     modifier: Modifier = Modifier
         .onGloballyPositioned { coords ->
@@ -117,10 +116,8 @@ fun Document(
         state.onEvent(DocumentEvent.DocumentLayoutChanged)
     }
     val fieldList = state.documentTextFieldList
-
     Box(
         modifier = Modifier
-
             .onGloballyPositioned { coords ->
                 state.onEvent(DocumentEvent.CoordinatesUpdated(DocumentEvent.CoordType.BOX, coords))
             }

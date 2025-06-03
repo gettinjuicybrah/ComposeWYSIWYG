@@ -8,6 +8,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -33,6 +35,7 @@ import com.joeybasile.composewysiwyg.events.DocumentEvent
 import com.joeybasile.composewysiwyg.model.style.CurrentCharStyle
 import com.joeybasile.composewysiwyg.model.style.ToolbarState
 import com.joeybasile.composewysiwyg.model.caret.CaretState
+import com.joeybasile.composewysiwyg.model.caret.GlobalCaret
 import com.joeybasile.composewysiwyg.model.caret.onCaretMoved
 import com.joeybasile.composewysiwyg.model.caret.updateCaretPosition
 import com.joeybasile.composewysiwyg.model.event.onEvent
@@ -79,6 +82,26 @@ fun rememberDocumentState(): DocumentState {
  * @property scope A [CoroutineScope] that can be used for asynchronous operations if needed.
  */
 class DocumentState(val scope: CoroutineScope) {
+    val document: DocumentModel = DocumentModel()
+
+    /** Snapshot lists Compose will observe directly */
+    // The `fields` property now holds the UI-mutable `Field` data class instances.
+    // Changes to this list (add, remove, reorder) and changes *within* the `Field` objects
+    // (due to Field.blocks being SnapshotStateList) will be observed by Compose.
+    val fields: SnapshotStateList<Field> =
+        document.fields.map { Field(it) }.toMutableStateList()
+    val rootReferenceCoordinates = mutableStateOf(RootReferenceCoordinates())
+    val globalCaret = mutableStateOf(
+        GlobalCaret(
+            fieldId = "",
+            blockId = "",
+            offsetInBlock = 0,
+            globalPosition = Offset.Unspecified,
+            height = 16f
+        )
+    )
+    val focusedBlock = mutableStateOf("")
+
 
     val defaultTextStyle = TextStyle.Default
 
@@ -118,6 +141,7 @@ class DocumentState(val scope: CoroutineScope) {
             height = 16f
         )
     )
+
 
     val maxWidth: Int = 500
 
@@ -160,6 +184,7 @@ class DocumentState(val scope: CoroutineScope) {
         )
 
     }
+
     fun setNewLineAtEnd(index: Int) {
         documentTextFieldList.set(
             index,
@@ -212,6 +237,7 @@ class DocumentState(val scope: CoroutineScope) {
         )
         documentTextFieldList.add(index + 1, newField)
     }
+
     fun insertFieldAfter(index: Int, field: DocumentTextFieldState) {
         documentTextFieldList.add(index + 1, field)
     }
@@ -232,6 +258,11 @@ class DocumentState(val scope: CoroutineScope) {
      */
     fun setBoxCoords(coordinates: LayoutCoordinates) {
         parentCoordinates.value = parentCoordinates.value.copy(box = coordinates)
+    }
+
+    fun setRootCoords(coordinates: LayoutCoordinates) {
+        rootReferenceCoordinates.value =
+            rootReferenceCoordinates.value.copy(coordinates = coordinates)
     }
 
     /**
@@ -289,11 +320,11 @@ class DocumentState(val scope: CoroutineScope) {
         val currentCS = currentCharStyle.value  // wherever you store it
         val mergedSpan = SpanStyle(
             fontFamily = currentCS.font,
-            fontSize   = currentCS.fontSize!!,
-            color      = currentCS.textColor!!,
+            fontSize = currentCS.fontSize!!,
+            color = currentCS.textColor!!,
             background = currentCS.textHighlightColor!!,
             fontWeight = if (currentCS.isBold) FontWeight.Bold else FontWeight.Normal,
-            fontStyle  = if (currentCS.isItalic) FontStyle.Italic else FontStyle.Normal,
+            fontStyle = if (currentCS.isItalic) FontStyle.Italic else FontStyle.Normal,
             textDecoration = listOfNotNull(
                 currentCS.isUnderline.takeIf { it }?.let { TextDecoration.Underline },
                 currentCS.isStrikethrough.takeIf { it }?.let { TextDecoration.LineThrough }
@@ -338,7 +369,7 @@ class DocumentState(val scope: CoroutineScope) {
             addStyle(
                 style = mergedSpan,
                 start = insertionStartInBuilder,
-                end   = insertionStartInBuilder + insertedPlain.length
+                end = insertionStartInBuilder + insertedPlain.length
             )
 
             // 6c) append the suffix (+ its spans). BUT! We have to shift suffix spans by “insertion length” automatically.
@@ -622,6 +653,10 @@ class DocumentState(val scope: CoroutineScope) {
         }
     }
 
+    fun updateBlockCoords() {
+
+    }
+
     /**
      * Maps a global offset (in the Box's coordinate system) to a text field index and character offset.
      * @param globalOffset The position in the Box's coordinate system.
@@ -650,12 +685,16 @@ class DocumentState(val scope: CoroutineScope) {
         return null
     }
 
-    fun enterPressed(){
+    fun enterPressed() {
         val idx = caretState.value.fieldIndex
         val field = documentTextFieldList[idx]
-        val rawOffset = caretState.value.offset.coerceIn(0, field.textFieldValue.annotatedString.length)
-        val beforeAS  = field.textFieldValue.annotatedString.subSequence(0, rawOffset)
-        val afterAS   = field.textFieldValue.annotatedString.subSequence(rawOffset, field.textFieldValue.annotatedString.length)
+        val rawOffset =
+            caretState.value.offset.coerceIn(0, field.textFieldValue.annotatedString.length)
+        val beforeAS = field.textFieldValue.annotatedString.subSequence(0, rawOffset)
+        val afterAS = field.textFieldValue.annotatedString.subSequence(
+            rawOffset,
+            field.textFieldValue.annotatedString.length
+        )
 
         // 1) overwrite current field with the “before” text
         documentTextFieldList[idx] = field.copy(

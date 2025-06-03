@@ -6,7 +6,13 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import com.joeybasile.composewysiwyg.model.Block
 import com.joeybasile.composewysiwyg.model.DocumentState
+import com.joeybasile.composewysiwyg.model.Field
+import com.joeybasile.composewysiwyg.model.TextBlock
+import com.joeybasile.composewysiwyg.model.getBlockById
+import com.joeybasile.composewysiwyg.model.getFieldById
+import com.joeybasile.composewysiwyg.model.getTextBlockById
 import com.joeybasile.composewysiwyg.model.linewrap.isEmptyField
 import com.joeybasile.composewysiwyg.model.style.CurrentCharStyle
 import com.joeybasile.composewysiwyg.model.style.DefaultToolbarState
@@ -149,6 +155,60 @@ fun DocumentState.updateCaretIndex(index: Int) {
     caretState.value = caret.copy(fieldIndex = index)
 }
 
+fun DocumentState.updateGlobalCaretPosition() {
+    val caret = globalCaret.value
+    if (caret.fieldId == null) {
+        println("GlobalCaret: No fieldId set.")
+        return
+    }
+    val targetField: Field? = getFieldById(caret.fieldId!!)
+    if (targetField == null) {
+        println("GlobalCaret: Field with ID ${caret.fieldId} not found.")
+        return
+    }
+    println("GlobalCaret: Found field: ${targetField.id}")
+
+    if (caret.blockId == null) {
+        println("GlobalCaret: No blockId set for field ${targetField.id}.")
+        // Handle case where only field is known, e.g., caret at start/end of field
+        return
+    }
+    val targetBlock: TextBlock? = getTextBlockById(targetField, caret.blockId)
+    if (targetBlock == null) {
+        println("GlobalCaret: Block with ID ${caret.blockId} not found in field ${targetField.id}.")
+        // globalCaret.value = currentCaretState.copy(isVisible = false)
+        return
+    }
+
+
+    println("GlobalCaret: Found block: ${targetBlock.id} in field ${targetField.id}")
+    val blockCoords = targetBlock.layoutCoordinates.value ?: return
+    val rootCoords = rootReferenceCoordinates.value.coordinates ?: return
+
+    val layoutResult = targetBlock.textLayoutResult ?: return
+    val localOffset =
+        layoutResult.getCursorRect(
+            caret.offsetInBlock.coerceIn(
+                0,
+                layoutResult.layoutInput.text.length
+            )
+        )
+    val localX = localOffset.left
+    val localY = localOffset.top
+
+    val globalOffset = rootCoords.localPositionOf(blockCoords, Offset(localX, localY))
+    val height = layoutResult.getLineBottom(0) - layoutResult.getLineTop(0)
+
+    // Update caret state with calculated values
+    globalCaret.value = caret.copy(
+        fieldId = targetField.id,
+        blockId = targetBlock.id,
+        globalPosition = globalOffset,
+        height = height.coerceAtLeast(16f)
+    )
+
+}
+
 fun DocumentState.updateCaretPosition() {
     //println("entered updateCaretPosition().")
     val caret = caretState.value
@@ -183,7 +243,7 @@ fun DocumentState.updateCaretPosition() {
 fun DocumentState.updateStylesOnCaretMoved() {
     println("updateStylesOnCaretMoved()")
 
-    if (caretState.value.offset == 0 || isEmptyField(caretState.value.fieldIndex)){
+    if (caretState.value.offset == 0 || isEmptyField(caretState.value.fieldIndex)) {
         println("caret offset 0 or is empty field.")
         //resetToolbarToDefault()
         //resetCurrentCharStyleToDefault()
@@ -194,7 +254,7 @@ fun DocumentState.updateStylesOnCaretMoved() {
     val currentFieldAS =
         documentTextFieldList[caretState.value.fieldIndex].textFieldValue.annotatedString
     val currentCharOffset = caretState.value.offset - 1
-    if (!currentFieldAS.hasSpanStyleAt(currentCharOffset)){
+    if (!currentFieldAS.hasSpanStyleAt(currentCharOffset)) {
         //resetToolbarToDefault()
         //resetCurrentCharStyleToDefault()
         println("has default styling.")

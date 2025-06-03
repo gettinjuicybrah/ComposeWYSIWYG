@@ -18,3 +18,7 @@ data class ParentCoordinates(
     val box: LayoutCoordinates? = null, //Currently, literally only this is used for computing global coordinates. This is for caret global relative offset,
     val lazyColumn: LayoutCoordinates? = null
 )
+
+data class RootReferenceCoordinates(
+    val coordinates: LayoutCoordinates?= null
+)

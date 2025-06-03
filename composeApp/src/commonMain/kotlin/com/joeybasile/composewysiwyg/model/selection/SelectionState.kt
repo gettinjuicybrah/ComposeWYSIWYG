@@ -1,7 +1,11 @@
 package com.joeybasile.composewysiwyg.model.selection
 
 import androidx.compose.ui.geometry.Offset
-
+/*
+TODO:
+Add selection segment heights which are just based on the tallest segment within a current line - all segments in a line will have the
+same height.
+ */
 data class SelectionState(
     val segments: List<SelectionSegment> = emptyList(),
     val anchor: SelectionCaretState? = null,
