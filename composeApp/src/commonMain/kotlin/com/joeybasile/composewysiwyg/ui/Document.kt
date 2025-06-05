@@ -52,15 +52,25 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
-import com.joeybasile.composewysiwyg.model.*
-import com.joeybasile.composewysiwyg.model.caret.updateGlobalCaretPosition
+import com.joeybasile.composewysiwyg.model.Block
+import com.joeybasile.composewysiwyg.model.Field
+//import com.joeybasile.composewysiwyg.model.*
+import com.joeybasile.composewysiwyg.model.getFieldById
+import com.joeybasile.composewysiwyg.model.getTextBlockById
+import com.joeybasile.composewysiwyg.model.handleFocusChange
+import com.joeybasile.composewysiwyg.model.handleOnTextLayout
+import com.joeybasile.composewysiwyg.model.handleOnValueChange
+import com.joeybasile.composewysiwyg.model.updateBlockCoords
+import com.joeybasile.composewysiwyg.model.updateGlobalCaretPosition
 
 /**
  * Renders the whole document.  Each [Field] becomes one item in the vertical list.
@@ -71,6 +81,10 @@ fun Document(
     state: DocumentState,
     modifier: Modifier = Modifier,
 ) {
+    LaunchedEffect(state.rootReferenceCoordinates.value, state.fields){
+        println("root reference coords changed. LaunchedEffect in document. About to call updateGlobalCaretPosition()")
+        state.updateGlobalCaretPosition()
+    }
     Box(
         modifier = Modifier
 
@@ -81,6 +95,11 @@ fun Document(
                 drawContent()
                 val caret = state.globalCaret.value
                 if (caret.globalPosition != Offset.Unspecified && caret.isVisible) {
+                    println("-------------------------------------------------------------------------------")
+
+                    println("-------------------------------------------------------------------------------")
+
+                    println("-------------------------------------------------------------------------------")
                     drawLine(
                         color = Color.Green,
                         start = caret.globalPosition,
@@ -94,16 +113,12 @@ fun Document(
             items(state.fields, key = { it.id }) { field ->
                 Field(
                     field = field,
-                    // Hoist the call to the state's update method
-                    onBlockPositioned = { fieldId, blockId, layoutCoordinates ->
-                        state.updateBlockCoords(fieldId, blockId, layoutCoordinates)
-                    },
                     onKeyEvent = { event, _ ->
                         handleDocKeyEvent(event, state)
                     },
                     focusedBlock = state.focusedBlock,
-                    updateCaret = state.updateGlobalCaretPosition()
-                    )
+                    state = state,
+                )
             }
         }
     }
@@ -116,34 +131,28 @@ fun Document(
 @Composable
 private fun Field(
     field: Field,
-    onBlockPositioned: (fieldId: String, blockId: String, LayoutCoordinates) -> Unit,
+    state: DocumentState,
     onKeyEvent: (KeyEvent, String) -> Boolean,
     focusedBlock: MutableState<String>,
-    updateCaret: Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(modifier = modifier) {
         field.blocks.forEach { block ->
             key(block.id) {
                 when (block) {
-                    is TextBlock -> TextBlock(
+                    is Block.TextBlock -> TextBlock(
                         block = block,
-                        onPositioned = { blockId, layoutCoordinates ->
-                            onBlockPositioned(field.id, blockId, layoutCoordinates)
-                        },
+                        fieldId = field.id,
+                        state,
                         onKeyEvent = onKeyEvent,
                         focusedBlock = focusedBlock,
-                        updateCaret = updateCaret
-                    )
-                    is ImageBlock -> ImageBlock(
+                        )
+                    is Block.ImageBlock -> ImageBlock(
                         block,
-                        onPositioned = { blockId, layoutCoordinates ->
-                            onBlockPositioned(field.id, blockId, layoutCoordinates)
-                        },
                         onKeyEvent = onKeyEvent,
                         focusedBlock = focusedBlock
                     )
-                    is DelimiterBlock -> DelimiterBlock(block)
+                    is Block.DelimiterBlock -> DelimiterBlock(block)
                 }
             }
         }
@@ -154,51 +163,57 @@ private fun Field(
  * */
 @Composable
 private fun TextBlock(
-    block: TextBlock,
-    onPositioned: (blockId: String, LayoutCoordinates) -> Unit,
+    block: Block.TextBlock,
+    fieldId: String,
+    state: DocumentState,
     onKeyEvent: (KeyEvent, String) -> Boolean,
-    focusedBlock: MutableState<String>,
-    updateCaret: Unit
+    focusedBlock: MutableState<String>
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    BasicTextField(
-        value = block.value,
-        onValueChange = {
-            block.value = it
-        },
-        onTextLayout = {
 
-        },
-        modifier = Modifier
-            .defaultMinSize(minWidth = 1.dp) // keeps caret visible even if empty
-            .onGloballyPositioned { layoutCoordinates ->
-                onPositioned(block.id, layoutCoordinates)
-            }
-            .focusRequester(block.focusRequester)
-            .onPreviewKeyEvent { event ->
-                onKeyEvent(event, block.id)
-            }
-            .focusRequester(block.focusRequester)
-            .onFocusChanged {
-                if (it.isFocused) {
-                    isFocused = true
-                    //state.onEvent(DocumentEvent.Selection.NullifyState)
-                    //println("focus updated to index ${index}")
-                    //state.onEvent(DocumentEvent.FocusChanged(index))
-                } else {
-                    isFocused = false
-                }
-            },
-        cursorBrush = SolidColor(Color.Blue),
-        singleLine = false
-    )
+            BasicTextField(
+                value = block.textFieldValue,
+                //value = block.value,
+                onValueChange = { newValue ->
+
+                    state.handleOnValueChange(fieldId, block.id, newValue)
+                    println("HANDLED TEXTFIELDVALUE. text: ${newValue.text}")
+                    println("")
+                    println("")
+                },
+                onTextLayout = {
+                    state.handleOnTextLayout(fieldId, block.id, it)
+                },
+                modifier = Modifier
+                    .onGloballyPositioned { layoutCoordinates ->
+                        state.updateBlockCoords(fieldId, block, layoutCoordinates)
+                    }
+                    .onPreviewKeyEvent { event ->
+                        onKeyEvent(event, block.id)
+                    }
+
+                    .focusRequester(block.focusRequester)
+                    .onFocusChanged {
+                        if (it.isFocused) {
+                            isFocused = true
+                            state.handleFocusChange(fieldId, block.id)
+                        } else {
+                            isFocused = false
+                        }
+                    },
+                cursorBrush = SolidColor(Color.Blue),
+                singleLine = true
+            )
+
     LaunchedEffect(focusedBlock.value) {
         if (focusedBlock.value == block.id) {
             try {
-                println("FOCUS REQUESTED IN TextBlock ${block.value.text}")
+                println("FOCUS REQUESTED IN TextBlock ${block.textFieldValue.text}")
                 block.focusRequester.requestFocus()
-                updateCaret
+            //state.handleFocusChange(fieldId, block.id)
+                state.updateGlobalCaretPosition()
             } catch (e: Exception) {
+                println("CATACHY ")
             }
         }
     }
@@ -207,13 +222,13 @@ private fun TextBlock(
 /** Simple bitmap render; you can swap in AsyncImage, Coil, etc. later. */
 @Composable
 private fun ImageBlock(
-    block: ImageBlock,
-    onPositioned: (blockId: String, LayoutCoordinates) -> Unit,
+    block: Block.ImageBlock,
     onKeyEvent: (KeyEvent, String) -> Boolean,
     focusedBlock: MutableState<String>
 ) {
     var isFocused by remember { mutableStateOf(false) }
-
+    Text("image")
+/*
     Image(
         bitmap = block.bitmap,
         contentDescription = null,
@@ -225,6 +240,8 @@ private fun ImageBlock(
                 onPositioned(block.id, layoutCoordinates)
             },
     )
+
+ */
 }
 
 /**
@@ -234,15 +251,17 @@ private fun ImageBlock(
  * * `Tab` inserts horizontal space.
  */
 @Composable
-private fun DelimiterBlock(block: DelimiterBlock) {
+private fun DelimiterBlock(block: Block.DelimiterBlock) {
+
     when (block.kind) {
-        is NewLine -> Spacer(
-            Modifier
-                .fillMaxWidth()
-                .height(0.dp)
-        )
-        is Tab -> Spacer(
-            Modifier.width(16.dp)
-        )
+        Block.DelimiterBlock.Kind.NewLine -> {
+         Text("new line")
+            Spacer(
+                Modifier
+                    .fillMaxWidth()
+                    .height(0.dp)
+            )
+        }
+        Block.DelimiterBlock.Kind.Tab -> TODO()
     }
 }

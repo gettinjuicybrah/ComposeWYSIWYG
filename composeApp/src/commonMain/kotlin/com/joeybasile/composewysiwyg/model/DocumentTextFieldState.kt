@@ -37,10 +37,45 @@ data class DocumentTextFieldState (
     val textMeasurer: TextMeasurer? = null,
     val textStyle: TextStyle? = null
 )
+
+sealed class Block {
+    abstract val id: String
+    abstract val length: Int
+    data class TextBlock(
+        override val id: String,
+        //override val length: Int = ,
+        val textFieldValue: TextFieldValue,
+        var layoutCoordinates: LayoutCoordinates? = null,
+        var textLayoutResult: TextLayoutResult? = null,
+        val focusRequester: FocusRequester
+    ) : Block(){
+        override val length get() = textFieldValue.text.length
+    }
+
+    data class ImageBlock(
+        override val id: String,
+        override val length: Int = 1,
+        val focusRequester: FocusRequester
+    ) : Block()
+
+    data class DelimiterBlock(
+        override val id: String,
+        val kind: Kind = Kind.NewLine,
+        override val length: Int = 1
+    ) : Block(){
+        enum class Kind { NewLine, Tab /* add more later (Space, etc.) */ }
+    }
+}
+
+data class Field(
+    val id: String,
+    val blocks: SnapshotStateList<Block>
+)
+
 // --- Immutable Model (Your Source of Truth) ---
 // These classes represent the clean, immutable data.
 // @Immutable is suitable here because these are truly immutable data classes.
-
+/*
 @Immutable
 data class DocumentModel(
     val fields: List<FieldModel> = emptyList()
@@ -116,7 +151,7 @@ data class Field @OptIn(ExperimentalUuidApi::class) constructor(
 sealed interface Block {
     val id: String
     val length: Int
-    val layoutCoordinates: MutableState<LayoutCoordinates?>
+    var layoutCoordinates: LayoutCoordinates?
     fun toModel(): BlockModel // Function to convert back to the immutable model
 
     companion object {
@@ -135,8 +170,8 @@ data class TextBlock(
     // Make `value` a `var` so changes to TextFieldValue are observed.
     var value: TextFieldValue,
     val focusRequester: FocusRequester,
-    override val layoutCoordinates: MutableState<LayoutCoordinates?> = mutableStateOf(null),
-    val textLayoutResult: TextLayoutResult? = null
+    override var layoutCoordinates: LayoutCoordinates? = null,
+    var textLayoutResult: TextLayoutResult? = null
 ) : Block {
     override val length get() = value.text.length
 
@@ -161,7 +196,7 @@ data class ImageBlock(
     // Make `bitmap` a `var` if it can change and you want to observe it.
     var bitmap: ImageBitmap,
     val focusRequester: FocusRequester,
-    override val layoutCoordinates: MutableState<LayoutCoordinates?> = mutableStateOf(null)
+    override var layoutCoordinates: LayoutCoordinates? = null,
 ) : Block {
     override val length get() = 1
 
@@ -185,7 +220,7 @@ data class DelimiterBlock(
     override val id: String = Uuid.random().toString(),
     // Make `kind` a `var` if it can change and you want to observe it.
     var kind: Delimiter,
-    override val layoutCoordinates: MutableState<LayoutCoordinates?> = mutableStateOf(null)
+    override var layoutCoordinates: LayoutCoordinates? = null,
 ) : Block {
     override val length get() = 1
 
@@ -200,3 +235,5 @@ data class DelimiterBlock(
         kind = kind
     )
 }
+
+ */

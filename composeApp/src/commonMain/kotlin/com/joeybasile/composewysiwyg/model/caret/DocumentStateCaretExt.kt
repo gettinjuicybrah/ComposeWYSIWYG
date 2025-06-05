@@ -9,7 +9,6 @@ import androidx.compose.ui.text.style.TextDecoration
 import com.joeybasile.composewysiwyg.model.Block
 import com.joeybasile.composewysiwyg.model.DocumentState
 import com.joeybasile.composewysiwyg.model.Field
-import com.joeybasile.composewysiwyg.model.TextBlock
 import com.joeybasile.composewysiwyg.model.getBlockById
 import com.joeybasile.composewysiwyg.model.getFieldById
 import com.joeybasile.composewysiwyg.model.getTextBlockById
@@ -21,6 +20,7 @@ import com.joeybasile.composewysiwyg.model.style.getSpanStylesAt
 import com.joeybasile.composewysiwyg.model.style.hasSpanStyleAt
 import com.joeybasile.composewysiwyg.model.style.resetCurrentCharStyleToDefault
 import com.joeybasile.composewysiwyg.model.style.resetToolbarToDefault
+import com.joeybasile.composewysiwyg.model.updateFocusedBlock
 
 
 fun DocumentState.moveCaretRight() {
@@ -155,59 +155,18 @@ fun DocumentState.updateCaretIndex(index: Int) {
     caretState.value = caret.copy(fieldIndex = index)
 }
 
-fun DocumentState.updateGlobalCaretPosition() {
-    val caret = globalCaret.value
-    if (caret.fieldId == null) {
-        println("GlobalCaret: No fieldId set.")
-        return
-    }
-    val targetField: Field? = getFieldById(caret.fieldId!!)
-    if (targetField == null) {
-        println("GlobalCaret: Field with ID ${caret.fieldId} not found.")
-        return
-    }
-    println("GlobalCaret: Found field: ${targetField.id}")
-
-    if (caret.blockId == null) {
-        println("GlobalCaret: No blockId set for field ${targetField.id}.")
-        // Handle case where only field is known, e.g., caret at start/end of field
-        return
-    }
-    val targetBlock: TextBlock? = getTextBlockById(targetField, caret.blockId)
-    if (targetBlock == null) {
-        println("GlobalCaret: Block with ID ${caret.blockId} not found in field ${targetField.id}.")
-        // globalCaret.value = currentCaretState.copy(isVisible = false)
-        return
-    }
-
-
-    println("GlobalCaret: Found block: ${targetBlock.id} in field ${targetField.id}")
-    val blockCoords = targetBlock.layoutCoordinates.value ?: return
-    val rootCoords = rootReferenceCoordinates.value.coordinates ?: return
-
-    val layoutResult = targetBlock.textLayoutResult ?: return
-    val localOffset =
-        layoutResult.getCursorRect(
-            caret.offsetInBlock.coerceIn(
-                0,
-                layoutResult.layoutInput.text.length
-            )
-        )
-    val localX = localOffset.left
-    val localY = localOffset.top
-
-    val globalOffset = rootCoords.localPositionOf(blockCoords, Offset(localX, localY))
-    val height = layoutResult.getLineBottom(0) - layoutResult.getLineTop(0)
-
-    // Update caret state with calculated values
-    globalCaret.value = caret.copy(
-        fieldId = targetField.id,
-        blockId = targetBlock.id,
-        globalPosition = globalOffset,
-        height = height.coerceAtLeast(16f)
-    )
-
+fun DocumentState.updateGlobalCaretFieldId(fieldId: String) {
+    globalCaret.value = globalCaret.value.copy(fieldId)
 }
+
+fun DocumentState.updateGlobalCaretBlockId(blockId: String) {
+    globalCaret.value = globalCaret.value.copy(blockId)
+}
+
+fun DocumentState.updateGlobalCaretFieldAndBlockId(fieldId: String, blockId: String) {
+    globalCaret.value = globalCaret.value.copy(fieldId = fieldId, blockId = blockId)
+}
+
 
 fun DocumentState.updateCaretPosition() {
     //println("entered updateCaretPosition().")
@@ -223,14 +182,7 @@ fun DocumentState.updateCaretPosition() {
         layoutResult.getCursorRect(caret.offset.coerceIn(0, layoutResult.layoutInput.text.length))
     val localX = localOffset.left
     val localY = localOffset.top
-    //println("-------------updateCARETPOS X:$localX")
-    //println("-------------updateCARETPOS y:$localY")
 
-    //val offset = field.textLayoutResult?.getOffsetForPosition(Offset(localX, localY))
-    //println("offset: $offset")
-
-
-    // Convert to global coordinates relative to the Box
     val globalOffset = boxCoords.localPositionOf(fieldCoords, Offset(localX, localY))
     val height = layoutResult.getLineBottom(0) - layoutResult.getLineTop(0)
 

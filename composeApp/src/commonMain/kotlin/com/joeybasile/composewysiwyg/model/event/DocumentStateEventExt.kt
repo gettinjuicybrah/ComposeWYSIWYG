@@ -8,6 +8,7 @@ import com.joeybasile.composewysiwyg.model.caret.moveCaretRight
 import com.joeybasile.composewysiwyg.model.caret.moveCaretUp
 import com.joeybasile.composewysiwyg.model.caret.updateCaretIndex
 import com.joeybasile.composewysiwyg.model.caret.updateCaretPosition
+import com.joeybasile.composewysiwyg.model.enterPressed
 import com.joeybasile.composewysiwyg.model.selection.dragBased.startDragSelection
 import com.joeybasile.composewysiwyg.model.selection.dragBased.updateDragSelection
 import com.joeybasile.composewysiwyg.model.selection.finishSelection

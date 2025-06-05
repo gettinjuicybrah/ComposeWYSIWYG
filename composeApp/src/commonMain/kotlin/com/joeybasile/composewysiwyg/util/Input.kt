@@ -13,6 +13,10 @@ import com.joeybasile.composewysiwyg.model.caret.moveCaretDown
 import com.joeybasile.composewysiwyg.model.caret.moveCaretLeft
 import com.joeybasile.composewysiwyg.model.caret.moveCaretRight
 import com.joeybasile.composewysiwyg.model.caret.moveCaretUp
+import com.joeybasile.composewysiwyg.model.caret.moveGlobalCaretDown
+import com.joeybasile.composewysiwyg.model.caret.moveGlobalCaretLeft
+import com.joeybasile.composewysiwyg.model.caret.moveGlobalCaretRight
+import com.joeybasile.composewysiwyg.model.caret.moveGlobalCaretUp
 import com.joeybasile.composewysiwyg.model.caret.onCaretMoved
 import com.joeybasile.composewysiwyg.model.event.onEvent
 import com.joeybasile.composewysiwyg.model.linewrap.getFieldTextMeasurer
@@ -20,11 +24,12 @@ import com.joeybasile.composewysiwyg.model.linewrap.getFieldTextStyle
 import com.joeybasile.composewysiwyg.model.linewrap.getGlobalCaretField
 import com.joeybasile.composewysiwyg.model.linewrap.procBackspace
 import com.joeybasile.composewysiwyg.model.selection.selectAll
-
+import com.joeybasile.composewysiwyg.model.*
 fun handleDocKeyEvent(
     event: KeyEvent,
     state: DocumentState
 ): Boolean {
+    /*
     if (event.type == KeyEventType.KeyDown && !state.selectionState.isActive && !event.isShiftPressed && event.key == Key.Backspace) {
         state.procBackspace(
             state.getFieldTextMeasurer(state.getGlobalCaretField()),
@@ -76,31 +81,34 @@ fun handleDocKeyEvent(
     if (event.isCtrlPressed && event.key == Key.A) {
         state.selectAll()
     }
+    */
     when (event.type) {
         KeyEventType.KeyDown -> when (event.key) {
 
             Key.DirectionRight -> {
-                state.moveCaretRight()
-                state.onCaretMoved()
+                state.moveGlobalCaretRight()
+                state.onGlobalCaretMoved()
                 return true
             }
 
             Key.DirectionLeft -> {
-                state.moveCaretLeft()
-                state.onCaretMoved()
+               // state.moveCaretLeft()
+               // state.onCaretMoved()
+                state.moveGlobalCaretLeft()
+                state.onGlobalCaretMoved()
                 return true
             }
 
             Key.DirectionDown -> {
-                state.moveCaretDown()
-                state.onCaretMoved()
+                state.moveGlobalCaretDown()
+                state.onGlobalCaretMoved()
                 return true
             }
 
             Key.DirectionUp -> {
 
-                state.moveCaretUp()
-                state.onCaretMoved()
+                state.moveGlobalCaretUp()
+                state.onGlobalCaretMoved()
                 return true
             }
 

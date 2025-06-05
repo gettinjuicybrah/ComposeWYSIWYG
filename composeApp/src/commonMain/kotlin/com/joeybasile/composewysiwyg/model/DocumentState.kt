@@ -45,6 +45,8 @@ import com.joeybasile.composewysiwyg.model.style.resetCurrentCharStyleToDefault
 import com.joeybasile.composewysiwyg.model.style.resetToolbarToDefault
 import com.joeybasile.composewysiwyg.util.sliceRange
 import kotlinx.coroutines.CoroutineScope
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 /**
  * Creates and remembers the [DocumentState] instance.
@@ -67,7 +69,8 @@ fun rememberDocumentState(): DocumentState {
     // Initialize the document state for a new document. Later, this can be
     // replaced with conditional logic if you decide to support existing documents.
     LaunchedEffect(Unit) {
-        state.initializeNewDocument()
+        // state.initializeNewDocument()
+        state.initializeNewDoc()
     }
     return state
 }
@@ -82,14 +85,12 @@ fun rememberDocumentState(): DocumentState {
  * @property scope A [CoroutineScope] that can be used for asynchronous operations if needed.
  */
 class DocumentState(val scope: CoroutineScope) {
-    val document: DocumentModel = DocumentModel()
 
     /** Snapshot lists Compose will observe directly */
     // The `fields` property now holds the UI-mutable `Field` data class instances.
     // Changes to this list (add, remove, reorder) and changes *within* the `Field` objects
     // (due to Field.blocks being SnapshotStateList) will be observed by Compose.
-    val fields: SnapshotStateList<Field> =
-        document.fields.map { Field(it) }.toMutableStateList()
+    val fields = mutableStateListOf<Field>()
     val rootReferenceCoordinates = mutableStateOf(RootReferenceCoordinates())
     val globalCaret = mutableStateOf(
         GlobalCaret(
@@ -101,7 +102,6 @@ class DocumentState(val scope: CoroutineScope) {
         )
     )
     val focusedBlock = mutableStateOf("")
-
 
     val defaultTextStyle = TextStyle.Default
 
@@ -684,7 +684,7 @@ class DocumentState(val scope: CoroutineScope) {
         }
         return null
     }
-
+/*
     fun enterPressed() {
         val idx = caretState.value.fieldIndex
         val field = documentTextFieldList[idx]
@@ -713,5 +713,243 @@ class DocumentState(val scope: CoroutineScope) {
         caretState.value = caretState.value.copy(fieldIndex = newIndex, offset = 0)
         onCaretMoved()
     }
-
+*/
 }
+
+/*
+/**
+ * Splits the current line (a [Field]) at the caret position and inserts a fresh line beneath it.
+ *
+ * 1.   Locate the *active* [Field] / [Block] from [globalCaret].
+ * 2.   Rewrite the current **TextBlock** with the text *before* the caret.
+ * 3.   Collect everything to the *right* of the caret (― the “after” text **plus** any sibling blocks)
+ *      and move it into a shiny new [Field] that is inserted just below the current one.
+ * 4.   Finally, teleport the caret to the start of that new line and update focus.
+ */
+@OptIn(ExperimentalUuidApi::class)
+fun DocumentState.enterPressed() {
+    val caret = globalCaret.value
+
+    /* ──────────────────────────── 1. Find the current Field + Block ───────────────────────────── */
+    val fid = fields.indexOfFirst { it.id == caret.fieldId }
+    require(fid >= 0) { "Field (id=${caret.fieldId}) not found" }
+
+    val blocks = fields[fid].blocks
+    val bid = blocks.indexOfFirst { it.id == caret.blockId }
+    require(bid >= 0) { "Block (id=${caret.blockId}) not found" }
+
+    val activeBlock = blocks[bid]
+
+    /* ──────────────────────────── 2. Split inside a TextBlock ─────────────────────────────────── */
+    if (activeBlock is Block.TextBlock) {
+        val tfv = activeBlock.textFieldValue
+        val offset = caret.offsetInBlock.coerceIn(0, tfv.annotatedString.length)
+
+        val beforeText = tfv.annotatedString.subSequence(0, offset)
+        val afterText = tfv.annotatedString.subSequence(offset, tfv.annotatedString.length)
+
+        // 2a) Rewrite the current block so it only contains the text BEFORE the caret.
+        blocks[bid] = activeBlock.copy(
+            textFieldValue = tfv.copy(
+                annotatedString = beforeText,
+                // keep caret selection safe (end‑of‑line)
+                selection = TextRange(beforeText.length)
+            )
+        )
+
+        /* ──────────────────────────── 3. Build the new Field’s blocks ────────────────────────── */
+        val newBlocks: SnapshotStateList<Block> = mutableStateListOf()
+
+        // Optional “after” piece of the split text
+        if (afterText.isNotEmpty()) {
+            newBlocks.add(
+                Block.TextBlock(
+                    id = Uuid.random().toString(),
+                    textFieldValue = tfv.copy(
+                        annotatedString = afterText,
+                        selection = TextRange(0) // caret will sit at position 0
+                    ),
+                    focusRequester = FocusRequester()
+                )
+            )
+        }
+
+        // Everything that was to the right of the active block must follow the after‑text
+        val trailingBlocks = blocks.subList(bid + 1, blocks.size).toList()
+        newBlocks.addAll(trailingBlocks)
+
+        // Remove those trailing blocks from the current line
+        while (blocks.size > bid + 1) {
+            blocks.removeAt(bid + 1)
+        }
+
+        /* ──────────────────────────── 4. Materialise the new Field right beneath ─────────────── */
+        val newFieldId = Uuid.random().toString()
+        val newField = Field(
+            id = newFieldId,
+            blocks = newBlocks
+        )
+        fields.add(fid + 1, newField)
+
+        /* ──────────────────────────── 5. Move the caret & focus to line 2 ─────────────────────── */
+        val firstBlockInNew = newBlocks.firstOrNull()
+        globalCaret.value = firstBlockInNew?.id?.let {
+            globalCaret.value.copy(
+                fieldId = newFieldId,
+                blockId = it,
+                offsetInBlock = 0
+            )
+        }!!
+
+        updateFocusedBlock(firstBlockInNew?.id ?: "")
+        onGlobalCaretMoved()
+
+    } else {
+        /* ──────────────────────────── Fallback: caret sits on an Image/Delimiter etc. ─────────── */
+        // Strategy: break AFTER the non‑text block.
+
+        val newBlocks: SnapshotStateList<Block> = mutableStateListOf()
+        val trailingBlocks = blocks.subList(bid + 1, blocks.size).toList()
+        newBlocks.addAll(trailingBlocks)
+
+        // Strip trailing blocks from current line
+        while (blocks.size > bid + 1) {
+            blocks.removeAt(bid + 1)
+        }
+
+        // If no real content ended up in the new line, seed it with an empty TextBlock so the user can type
+        if (newBlocks.isEmpty()) {
+            newBlocks.add(
+                Block.TextBlock(
+                    id = Uuid.random().toString(),
+                    textFieldValue = TextFieldValue("").copy(selection = TextRange(0)),
+                    focusRequester = FocusRequester()
+                )
+            )
+        }
+
+        val newFieldId = Uuid.random().toString()
+        val newField = Field(id = newFieldId, blocks = newBlocks)
+        fields.add(fid + 1, newField)
+
+        globalCaret.value = globalCaret.value.copy(
+            fieldId = newFieldId,
+            blockId = newBlocks.first().id,
+            offsetInBlock = 0
+        )
+
+        updateFocusedBlock(newBlocks.first().id)
+        onGlobalCaretMoved()
+    }
+}*/
+/**
+ * Handle the **Enter** key.
+ *
+ * Workflow:
+ * 1.  Insert a `DelimiterBlock.Kind.NewLine` at the caret position **inside the current field**.
+ * 2.  Scoop up everything **after** that delimiter (any split‑off text plus trailing sibling
+ *     blocks) and move it to the *beginning* of the *next* field – creating that field if it
+ *     doesn’t already exist.
+ * 3.  Teleport the caret/focus to the first editable `TextBlock` in the next field, seeding an
+ *     empty one when required.
+ */
+@OptIn(ExperimentalUuidApi::class)
+fun DocumentState.enterPressed() {
+    val caret = globalCaret.value
+    require(caret.fieldId != null && caret.blockId != null) {
+        "Global caret must reference an existing field/block"
+    }
+
+    /* ─────────── 1. Locate active field + block ─────────────────────────────── */
+    val fid = fields.indexOfFirst { it.id == caret.fieldId }
+    require(fid >= 0) { "Field (id=${caret.fieldId}) not found" }
+
+    val currentBlocks = fields[fid].blocks
+    val bid = currentBlocks.indexOfFirst { it.id == caret.blockId }
+    require(bid >= 0) { "Block (id=${caret.blockId}) not found" }
+
+    /* ─────────── 2. Split active TextBlock + gather blocks to move ──────────── */
+    val blocksToMove = mutableListOf<Block>()
+
+    val active = currentBlocks[bid]
+    if (active is Block.TextBlock) {
+        val tfv = active.textFieldValue
+        val off = caret.offsetInBlock.coerceIn(0, tfv.annotatedString.length)
+
+        val before = tfv.annotatedString.subSequence(0, off)
+        val after = tfv.annotatedString.subSequence(off, tfv.annotatedString.length)
+
+        // Rewrite the current block with text BEFORE the caret
+        currentBlocks[bid] = active.copy(
+            textFieldValue = tfv.copy(
+                annotatedString = before,
+                selection = TextRange(before.length)
+            )
+        )
+
+        // If there is text AFTER the caret, move it to its own block
+        if (after.isNotEmpty()) {
+            blocksToMove.add(
+                Block.TextBlock(
+                    id = Uuid.random().toString(),
+                    textFieldValue = tfv.copy(
+                        annotatedString = after,
+                        selection = TextRange(0)
+                    ),
+                    focusRequester = FocusRequester()
+                )
+            )
+        }
+    }
+
+    /* ─────────── 3. Collect trailing sibling blocks ─────────────────────────── */
+    val trailing = currentBlocks.subList(bid + 1, currentBlocks.size).toList()
+    blocksToMove.addAll(trailing)
+
+    // Remove those trailing blocks from current field
+    while (currentBlocks.size > bid + 1) currentBlocks.removeAt(bid + 1)
+
+    /* ─────────── 4. Insert the newline delimiter right after the active block ─ */
+    val delimiter = Block.DelimiterBlock(
+        id = Uuid.random().toString(),
+        kind = Block.DelimiterBlock.Kind.NewLine
+    )
+    currentBlocks.add(bid + 1, delimiter)
+
+    /* ─────────── 5. Prepare / create the NEXT field ─────────────────────────── */
+    val nextFieldIndex = fid + 1
+    val nextField: Field = if (nextFieldIndex < fields.size) {
+        fields[nextFieldIndex]
+    } else {
+        Field(id = Uuid.random().toString(), blocks = mutableStateListOf()).also {
+            fields.add(it)
+        }
+    }
+
+    val nextBlocks = nextField.blocks
+
+    // Prepend moved blocks to the next field
+    if (blocksToMove.isNotEmpty()) nextBlocks.addAll(0, blocksToMove)
+
+    // Ensure next field starts with a TextBlock so the user can type
+    if (nextBlocks.isEmpty() || nextBlocks.first() !is Block.TextBlock) {
+        val emptyText = Block.TextBlock(
+            id = Uuid.random().toString(),
+            textFieldValue = TextFieldValue("").copy(selection = TextRange(0)),
+            focusRequester = FocusRequester()
+        )
+        nextBlocks.add(0, emptyText)
+    }
+
+    val caretBlock = nextBlocks.first { it is Block.TextBlock } as Block.TextBlock
+
+    /* ─────────── 6. Update caret + focus ────────────────────────────────────── */
+    globalCaret.value = globalCaret.value.copy(
+        fieldId = nextField.id,
+        blockId = caretBlock.id,
+        offsetInBlock = 0
+    )
+    updateFocusedBlock(caretBlock.id)
+    onGlobalCaretMoved()
+}
+
