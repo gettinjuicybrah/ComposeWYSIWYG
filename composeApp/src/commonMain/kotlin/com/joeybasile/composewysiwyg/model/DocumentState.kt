@@ -43,6 +43,7 @@ import com.joeybasile.composewysiwyg.model.selection.SelectionState
 import com.joeybasile.composewysiwyg.model.style.applySpanStyles
 import com.joeybasile.composewysiwyg.model.style.resetCurrentCharStyleToDefault
 import com.joeybasile.composewysiwyg.model.style.resetToolbarToDefault
+import com.joeybasile.composewysiwyg.ui.rememberLineMeasurer
 import com.joeybasile.composewysiwyg.util.sliceRange
 import kotlinx.coroutines.CoroutineScope
 import kotlin.uuid.ExperimentalUuidApi
@@ -60,7 +61,7 @@ import kotlin.uuid.Uuid
 fun rememberDocumentState(): DocumentState {
     // Use remember to persist the state instance across recompositions.
     val scope = rememberCoroutineScope()
-
+    val measurer = rememberLineMeasurer()
     val state = remember {
         DocumentState(
             scope = scope
@@ -70,6 +71,7 @@ fun rememberDocumentState(): DocumentState {
     // replaced with conditional logic if you decide to support existing documents.
     LaunchedEffect(Unit) {
         // state.initializeNewDocument()
+        state.textMeasurer = measurer
         state.initializeNewDoc()
     }
     return state
@@ -129,6 +131,8 @@ class DocumentState(val scope: CoroutineScope) {
         isUnderline = false,
         isStrikethrough = false
     )
+    var textMeasurer: TextMeasurer? = null
+
     var currentCharStyle = mutableStateOf(defaultCharStyle)
 
     var toolbarState = mutableStateOf(defaultToolbarState)

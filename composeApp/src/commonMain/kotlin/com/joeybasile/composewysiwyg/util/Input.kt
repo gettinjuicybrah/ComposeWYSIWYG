@@ -29,6 +29,20 @@ fun handleDocKeyEvent(
     event: KeyEvent,
     state: DocumentState
 ): Boolean {
+
+    if (event.type == KeyEventType.KeyDown && !event.isShiftPressed && event.key == Key.Backspace) {
+        state.onBackSpace()
+        /*
+        state.pullUp(
+            state.maxWidth,
+            state.textMeasurer!!,
+            state.defaultTextStyle
+        )
+
+         */
+        return true
+    }
+
     /*
     if (event.type == KeyEventType.KeyDown && !state.selectionState.isActive && !event.isShiftPressed && event.key == Key.Backspace) {
         state.procBackspace(

@@ -33,45 +33,43 @@ import kotlin.math.abs
  *    then to the first navigable block of following fields as needed.
  */
 fun DocumentState.moveGlobalCaretRight() {
-    val caret = globalCaret.value
-    val field  = caret.fieldId ?.let(::getFieldById)        ?: return
-    val blocks = field.blocks
-    val idx    = blocks.indexOfFirst { it.id == caret.blockId }.takeIf { it >= 0 } ?: return
+    val caret  = globalCaret.value
+    var field  = caret.fieldId?.let(::getFieldById) ?: return
+    var blocks = field.blocks
+    var idx    = blocks.indexOfFirst { it.id == caret.blockId }.takeIf { it >= 0 } ?: return
 
-    // ── 1. Try to advance inside the current TextBlock ─────────────────────────
-    val cur = blocks[idx]
-    if (cur is Block.TextBlock && caret.offsetInBlock < cur.length) {
+    // 1) Advance inside current TextBlock if possible
+    val cur = blocks[idx] as? Block.TextBlock
+    if (cur != null && caret.offsetInBlock < cur.length) {
         globalCaret.value = caret.copy(offsetInBlock = caret.offsetInBlock + 1)
-        onGlobalCaretMoved()
-        return
+        onGlobalCaretMoved(); return
     }
 
-    // ── 2. Find the next navigable block in document order ─────────────────────
-    fun Sequence<Field>.firstNavPair(): Pair<Field, Block>? =
-        flatMap { f -> f.blocks.asSequence().map { f to it } }
-            .firstOrNull { (_, b) -> b.isNavigable() }
+    // 2) Walk forward until we hit the NEXT caret-host
+    while (true) {
+        idx++
+        // Cross field boundary
+        if (idx >= blocks.size) {
+            val fieldIdx = fields.indexOf(field)
+            if (fieldIdx == fields.lastIndex) return            // bottom of document
+            val nextField = fields[fieldIdx + 1]
+            idx    = -1                      // will become 0 on next loop turn
+            blocks = nextField.blocks
+            field  = nextField
+            continue
+        }
 
-    val remainderOfThisField = blocks.drop(idx + 1)
-    val remainderPairs = remainderOfThisField
-        .asSequence()
-        .map { field to it }
-
-    val laterPairs = fields
-        .drop(fields.indexOf(field) + 1)              // fields after the current one
-        .asSequence()
-        .flatMap { f -> f.blocks.asSequence().map { blk -> f to blk } }
-
-    val result = sequenceOf(remainderPairs, laterPairs)
-        .flatten()
-        .firstOrNull { (_, blk) -> blk.isNavigable() }   // blk == pair.second
-
-    result?.let { (newField, newBlock) ->
-        globalCaret.value = caret.copy(
-            fieldId       = newField.id,
-            blockId       = newBlock.id,
-            offsetInBlock = 0
-        )
-        onGlobalCaretMoved()
+        val blk = blocks[idx]
+        if (blk.isCaretHost()) {
+            globalCaret.value = caret.copy(
+                fieldId       = field.id,
+                blockId       = blk.id,
+                offsetInBlock = 0
+            )
+            onGlobalCaretMoved()
+            return
+        }
+        /*  blk is traversal unit → simply continue looping  */
     }
 }
 
@@ -79,42 +77,41 @@ fun DocumentState.moveGlobalCaretRight() {
  * Move one “character” (or block) to the left.
  */
 fun DocumentState.moveGlobalCaretLeft() {
-    val caret = globalCaret.value
-    val field  = caret.fieldId ?.let(::getFieldById)        ?: return
-    val blocks = field.blocks
-    val idx    = blocks.indexOfFirst { it.id == caret.blockId }.takeIf { it >= 0 } ?: return
+    var field  = globalCaret.value.fieldId?.let(::getFieldById) ?: return
+    var blocks = field.blocks
+    var idx    = blocks.indexOfFirst { it.id == globalCaret.value.blockId }
+    if (idx < 0) return
 
-    // ── 1. Try to retreat inside current TextBlock ─────────────────────────────
-    val cur = blocks[idx]
-    if (cur is Block.TextBlock && caret.offsetInBlock > 0) {
-        globalCaret.value = caret.copy(offsetInBlock = caret.offsetInBlock - 1)
-        onGlobalCaretMoved()
-        return
+    // 1) Try to retreat inside current TextBlock
+    (blocks[idx] as? Block.TextBlock)?.let { tb ->
+        val off = globalCaret.value.offsetInBlock
+        if (off > 0) {
+            globalCaret.value = globalCaret.value.copy(offsetInBlock = off - 1)
+            onGlobalCaretMoved(); return
+        }
     }
 
-    // ── 2. Walk backwards to previous navigable block in document order ────────
-    fun Sequence<Field>.lastNavPair(): Pair<Field, Block>? =
-        flatMap { f -> f.blocks.asReversed().asSequence().map { f to it } }
-            .firstOrNull { (_, b) -> b.isNavigable() }
-
-    val beforeThisField = blocks.take(idx).asReversed()
-        .firstOrNull { it.isNavigable() }?.let { field to it }
-        ?: fields.take(fields.indexOf(field))               // earlier fields
-            .asReversed().asSequence()
-            .flatMap { f -> f.blocks.asReversed().asSequence().map { f to it } }
-            .firstOrNull { (_, b) -> b.isNavigable() }
-
-    beforeThisField?.let { (newField, newBlock) ->
-        val newOffset = when (newBlock) {
-            is Block.TextBlock -> newBlock.length
-            else         -> 0
+    // 2) Walk backward until previous caret-host
+    while (true) {
+        idx--
+        if (idx < 0) {                              // cross field boundary
+            val prevFieldIdx = fields.indexOf(field) - 1
+            if (prevFieldIdx < 0) return            // top of doc
+            field  = fields[prevFieldIdx]
+            blocks = field.blocks
+            idx    = blocks.lastIndex
         }
-        globalCaret.value = caret.copy(
-            fieldId       = newField.id,
-            blockId       = newBlock.id,
-            offsetInBlock = newOffset
-        )
-        onGlobalCaretMoved()
+        val blk = blocks[idx]
+        if (blk.isCaretHost()) {
+            val newOffset = (blk as Block.TextBlock).length
+            globalCaret.value = globalCaret.value.copy(
+                fieldId       = field.id,
+                blockId       = blk.id,
+                offsetInBlock = newOffset
+            )
+            onGlobalCaretMoved(); return
+        }
+        /* traversal unit → keep looping */
     }
 }
 
@@ -147,7 +144,12 @@ fun DocumentState.moveGlobalCaretUp() {
 
 /* ───────────────────────── helper utilities ───────────────────────── */
 
-private fun Block.isNavigable() = this is Block.TextBlock || this is Block.ImageBlock || this is Block.DelimiterBlock
+/** True caret-hosts; traversal units don’t qualify. */
+private fun Block.isCaretHost() = this is Block.TextBlock
+
+/** Traversal units that the caret can *pass* but never *sit on*. */
+private fun Block.isTraversalUnit() =
+    this is Block.ImageBlock || this is Block.DelimiterBlock
 
 /**
  * Put caret inside the field on the block whose horizontal span best matches [targetX].
@@ -155,7 +157,7 @@ private fun Block.isNavigable() = this is Block.TextBlock || this is Block.Image
  */
 private fun DocumentState.placeCaretAtX(field: Field, targetX: Float) {
     val textBlocks = field.blocks.filterIsInstance<Block.TextBlock>()
-    if (textBlocks.isEmpty()) return
+    if (textBlocks.isEmpty()) return    //SHOULD be impossible
 
     // Choose the block whose left edge is closest but not greater than targetX
     val best = textBlocks.minByOrNull { blk ->

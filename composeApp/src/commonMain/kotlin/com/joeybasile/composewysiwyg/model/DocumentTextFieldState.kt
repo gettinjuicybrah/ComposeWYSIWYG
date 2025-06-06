@@ -14,6 +14,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.Constraints
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -37,7 +38,26 @@ data class DocumentTextFieldState (
     val textMeasurer: TextMeasurer? = null,
     val textStyle: TextStyle? = null
 )
-
+internal fun Block.measure(
+    textMeasurer: TextMeasurer,
+    textStyle: TextStyle,
+    maxWidthPx: Int
+): Int = when (this) {
+    is Block.TextBlock -> textMeasurer.measure(
+        text = textFieldValue.annotatedString,
+        style = textStyle,
+        constraints = Constraints(maxWidth = maxWidthPx),
+        maxLines = 1,
+        softWrap = false
+    ).size.width
+    is Block.ImageBlock -> intrinsicWidth              // already px
+    is Block.DelimiterBlock -> 0                       // NL and TAB have no own width (tab handled later)
+}
+/** Coordinates within a block list */
+data class Pos(
+    val blockIdx: Int,
+    val offsetInBlock: Int        // 0‥length ; for non‑text blocks always 0/1
+)
 sealed class Block {
     abstract val id: String
     abstract val length: Int
@@ -54,6 +74,7 @@ sealed class Block {
 
     data class ImageBlock(
         override val id: String,
+        val intrinsicWidth: Int,      // px at native scale – set at insert / resize
         override val length: Int = 1,
         val focusRequester: FocusRequester
     ) : Block()
@@ -70,6 +91,55 @@ sealed class Block {
 data class Field(
     val id: String,
     val blocks: SnapshotStateList<Block>
+)
+/*
+Safe concatenation of two TextBlocks
+ */
+fun concatTextBlocks(a: Block.TextBlock, b: Block.TextBlock): Block.TextBlock =
+    a.copy(
+        textFieldValue = a.textFieldValue.copy(
+            annotatedString = a.textFieldValue.annotatedString + b.textFieldValue.annotatedString
+        )
+    )
+
+@OptIn(ExperimentalUuidApi::class)
+fun Field.normalise(): Field {
+    val tmp = blocks.toMutableList()
+
+    // merge adjacent TextBlocks (P‑3)
+    var i = 0
+    while (i < tmp.size - 1) {
+        if (tmp[i] is Block.TextBlock && tmp[i + 1] is Block.TextBlock) {
+            tmp[i] = concatTextBlocks(tmp[i] as Block.TextBlock, tmp[i + 1] as Block.TextBlock)
+            tmp.removeAt(i + 1)
+        } else i++
+    }
+
+    //(P‑1) If the field is *completely* empty we still want the canonical
+    //    // “blank line” = [Empty TB][NL]; otherwise do **not** force a NL.
+
+    if (tmp.isEmpty()) {
+        tmp += emptyTextBlock()
+        tmp += Block.DelimiterBlock(id = Uuid.random().toString())
+    }
+
+    // ensure ImageBlock is followed by TextBlock (P‑2)
+    i = 0
+    while (i < tmp.lastIndex) {
+        if (tmp[i] is Block.ImageBlock && tmp[i + 1] !is Block.TextBlock) {
+            tmp.add(i + 1, emptyTextBlock())
+        }
+        i++
+    }
+
+    return copy(blocks = mutableStateListOf(*tmp.toTypedArray()))
+}
+
+@OptIn(ExperimentalUuidApi::class)
+fun emptyTextBlock() = Block.TextBlock(
+    id = Uuid.random().toString(),
+    textFieldValue = TextFieldValue(""),
+    focusRequester = FocusRequester()
 )
 
 // --- Immutable Model (Your Source of Truth) ---
