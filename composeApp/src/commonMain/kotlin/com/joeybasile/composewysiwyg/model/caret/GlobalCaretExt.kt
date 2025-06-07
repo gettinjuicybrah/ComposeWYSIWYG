@@ -10,18 +10,7 @@ import com.joeybasile.composewysiwyg.model.Block
 import com.joeybasile.composewysiwyg.model.DocumentState
 import com.joeybasile.composewysiwyg.model.Field
 import com.joeybasile.composewysiwyg.model.*
-import com.joeybasile.composewysiwyg.model.getBlockById
 import com.joeybasile.composewysiwyg.model.getFieldById
-import com.joeybasile.composewysiwyg.model.getTextBlockById
-import com.joeybasile.composewysiwyg.model.linewrap.isEmptyField
-import com.joeybasile.composewysiwyg.model.style.CurrentCharStyle
-import com.joeybasile.composewysiwyg.model.style.DefaultToolbarState
-import com.joeybasile.composewysiwyg.model.style.ToolbarState
-import com.joeybasile.composewysiwyg.model.style.getSpanStylesAt
-import com.joeybasile.composewysiwyg.model.style.hasSpanStyleAt
-import com.joeybasile.composewysiwyg.model.style.resetCurrentCharStyleToDefault
-import com.joeybasile.composewysiwyg.model.style.resetToolbarToDefault
-import com.joeybasile.composewysiwyg.model.updateFocusedBlock
 
 import kotlin.math.abs
 
@@ -142,7 +131,6 @@ fun DocumentState.moveGlobalCaretUp() {
     placeCaretAtX(prevField, caret.globalPosition.x) ?: return
 }
 
-/* ───────────────────────── helper utilities ───────────────────────── */
 
 /** True caret-hosts; traversal units don’t qualify. */
 private fun Block.isCaretHost() = this is Block.TextBlock

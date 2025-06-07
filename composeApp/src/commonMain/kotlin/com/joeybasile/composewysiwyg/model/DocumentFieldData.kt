@@ -1,14 +1,8 @@
 package com.joeybasile.composewysiwyg.model
 
-import androidx.compose.runtime.Immutable
-import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.external.kotlinx.collections.immutable.*
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
-import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
@@ -18,26 +12,6 @@ import androidx.compose.ui.unit.Constraints
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
-/**
- * Represents the state of a single text field within the document.
- *
- * @property index The index of this text field in the document.
- * @property layoutCoordinates The layout coordinates for the text field (assigned via onGloballyPositioned).
- * @property textLayoutResult The layout result capturing text metrics (e.g., cursor offsets).
- * @property textFieldValue The current text and associated style state for the text field.
- */
-@OptIn(ExperimentalUuidApi::class)
-
-data class DocumentTextFieldState (
-    val id: String = Uuid.random().toString(),
-    var layoutCoordinates: LayoutCoordinates? = null, // updated via onGloballyPositioned
-    var textLayoutResult: TextLayoutResult? = null, // holds metrics like cursor offsets
-    val textFieldValue: TextFieldValue, // current text state of the BTF,
-    val focusRequester: FocusRequester,
-    val hasNewLineAtEnd: Boolean = false, // true if \n at the end of a line.
-    val textMeasurer: TextMeasurer? = null,
-    val textStyle: TextStyle? = null
-)
 internal fun Block.measure(
     textMeasurer: TextMeasurer,
     textStyle: TextStyle,
@@ -55,7 +29,7 @@ internal fun Block.measure(
 }
 /** Coordinates within a block list */
 data class Pos(
-    val blockIdx: Int,
+    val blockIndexWithinList: Int,
     val offsetInBlock: Int        // 0‥length ; for non‑text blocks always 0/1
 )
 sealed class Block {
@@ -115,13 +89,6 @@ fun Field.normalise(): Field {
         } else i++
     }
 
-    //(P‑1) If the field is *completely* empty we still want the canonical
-    //    // “blank line” = [Empty TB][NL]; otherwise do **not** force a NL.
-
-    if (tmp.isEmpty()) {
-        tmp += emptyTextBlock()
-        tmp += Block.DelimiterBlock(id = Uuid.random().toString())
-    }
 
     // ensure ImageBlock is followed by TextBlock (P‑2)
     i = 0
@@ -134,7 +101,38 @@ fun Field.normalise(): Field {
 
     return copy(blocks = mutableStateListOf(*tmp.toTypedArray()))
 }
+/**
+ * Applies structural invariants directly to a mutable list of blocks.
+ * This function MUTATES the list in place.
+ *  - P-3: Merges adjacent TextBlocks.
+ *  - P-2: Ensures any ImageBlock is followed by a TextBlock.
+ *  - P-4: Ensures a completely empty list becomes a canonical blank line.
+ */
+@OptIn(ExperimentalUuidApi::class)
+internal fun normalizeBlockList(blocks: MutableList<Block>) {
+    // 1. Merge adjacent TextBlocks (P-3)
+    var i = 0
+    while (i < blocks.size - 1) {
+        val current = blocks[i]
+        val next = blocks[i + 1]
+        if (current is Block.TextBlock && next is Block.TextBlock) {
+            blocks[i] = concatTextBlocks(current, next)
+            blocks.removeAt(i + 1)
+            // Do not increment i, allowing the newly merged block to be
+            // checked against the next one in the following iteration.
+        } else {
+            i++
+        }
+    }
 
+    // 2. Ensure ImageBlock is followed by TextBlock (P-2)
+    i = 0
+    while (i < blocks.lastIndex) {
+        if (blocks[i] is Block.ImageBlock && blocks[i + 1] !is Block.TextBlock) {
+            blocks.add(i + 1, emptyTextBlock())
+        }
+        i++
+    }}
 @OptIn(ExperimentalUuidApi::class)
 fun emptyTextBlock() = Block.TextBlock(
     id = Uuid.random().toString(),

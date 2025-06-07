@@ -38,12 +38,6 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.joeybasile.composewysiwyg.events.DocumentEvent
 import com.joeybasile.composewysiwyg.model.DocumentState
-import com.joeybasile.composewysiwyg.model.DocumentTextFieldState
-import com.joeybasile.composewysiwyg.model.caret.updateCaretPosition
-import com.joeybasile.composewysiwyg.model.event.onEvent
-import com.joeybasile.composewysiwyg.model.linewrap.setFieldTextMeasurer
-import com.joeybasile.composewysiwyg.model.linewrap.setFieldTextStyle
-import com.joeybasile.composewysiwyg.model.rememberDocumentState
 import com.joeybasile.composewysiwyg.util.handleDocKeyEvent
 import kotlin.math.sqrt
 
@@ -58,17 +52,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.text.TextLayoutResult
-import androidx.compose.ui.unit.dp
 import com.joeybasile.composewysiwyg.model.Block
 import com.joeybasile.composewysiwyg.model.Field
-//import com.joeybasile.composewysiwyg.model.*
-import com.joeybasile.composewysiwyg.model.getFieldById
-import com.joeybasile.composewysiwyg.model.getTextBlockById
 import com.joeybasile.composewysiwyg.model.handleFocusChange
 import com.joeybasile.composewysiwyg.model.handleOnTextLayout
 import com.joeybasile.composewysiwyg.model.handleOnValueChange
+import com.joeybasile.composewysiwyg.model.normalise
 import com.joeybasile.composewysiwyg.model.updateBlockCoords
 import com.joeybasile.composewysiwyg.model.updateGlobalCaretPosition
 
@@ -95,11 +84,11 @@ fun Document(
                 drawContent()
                 val caret = state.globalCaret.value
                 if (caret.globalPosition != Offset.Unspecified && caret.isVisible) {
-                    println("-------------------------------------------------------------------------------")
+                    //println("-------------------------------------------------------------------------------")
 
-                    println("-------------------------------------------------------------------------------")
+                    //println("-------------------------------------------------------------------------------")
 
-                    println("-------------------------------------------------------------------------------")
+                    //println("-------------------------------------------------------------------------------")
                     drawLine(
                         color = Color.Green,
                         start = caret.globalPosition,
@@ -137,6 +126,7 @@ private fun Field(
     modifier: Modifier = Modifier,
 ) {
     Row(modifier = modifier) {
+        field.normalise()
         field.blocks.forEach { block ->
             key(block.id) {
                 when (block) {
@@ -182,9 +172,13 @@ private fun TextBlock(
                     println("")
                 },
                 onTextLayout = {
+                    (state.fields[state.fields.indexOfFirst { it.id == fieldId }].normalise())
                     state.handleOnTextLayout(fieldId, block.id, it)
+                    //normalize the field whenever a layout result occurs.
+
                 },
                 modifier = Modifier
+                    .background(color = Color.LightGray)
                     .onGloballyPositioned { layoutCoordinates ->
                         state.updateBlockCoords(fieldId, block, layoutCoordinates)
                     }
@@ -224,7 +218,9 @@ private fun TextBlock(
 private fun ImageBlock(
     block: Block.ImageBlock,
     onKeyEvent: (KeyEvent, String) -> Boolean,
-    focusedBlock: MutableState<String>
+    focusedBlock: MutableState<String>,
+    modifier: Modifier = Modifier
+        .background(color = Color.Red)
 ) {
     var isFocused by remember { mutableStateOf(false) }
     Text("image")
@@ -251,15 +247,19 @@ private fun ImageBlock(
  * * `Tab` inserts horizontal space.
  */
 @Composable
-private fun DelimiterBlock(block: Block.DelimiterBlock) {
+private fun DelimiterBlock(
+    block: Block.DelimiterBlock,
+    modifier : Modifier = Modifier
+        .background(color = Color.Yellow)) {
 
     when (block.kind) {
         Block.DelimiterBlock.Kind.NewLine -> {
-         Text("new line")
+         Text(modifier = modifier, text = "new line")
             Spacer(
                 Modifier
                     .fillMaxWidth()
                     .height(0.dp)
+                   // .background(color = Color.Blue)
             )
         }
         Block.DelimiterBlock.Kind.Tab -> TODO()
