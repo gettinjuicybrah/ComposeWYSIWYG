@@ -58,6 +58,7 @@ import com.joeybasile.composewysiwyg.model.handleFocusChange
 import com.joeybasile.composewysiwyg.model.handleOnTextLayout
 import com.joeybasile.composewysiwyg.model.handleOnValueChange
 import com.joeybasile.composewysiwyg.model.normalise
+import com.joeybasile.composewysiwyg.model.processTFVUpdate
 import com.joeybasile.composewysiwyg.model.updateBlockCoords
 import com.joeybasile.composewysiwyg.model.updateGlobalCaretPosition
 
@@ -165,8 +166,8 @@ private fun TextBlock(
                 value = block.textFieldValue,
                 //value = block.value,
                 onValueChange = { newValue ->
-
-                    state.handleOnValueChange(fieldId, block.id, newValue)
+                    state.processTFVUpdate(fieldId, block.id, newValue)
+                    //state.handleOnValueChange(fieldId, block.id, newValue)
                     println("HANDLED TEXTFIELDVALUE. text: ${newValue.text}")
                     println("")
                     println("")

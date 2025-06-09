@@ -7,6 +7,7 @@ import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextRange
@@ -23,7 +24,8 @@ data class MeasureResult(
     val width: Int,
     val overflow: Boolean,
     val overflowPos: Pos? = null,
-    val hardBreakPos: Pos? = null          // first NL *inside* line, if any
+    val hardBreakPos: Pos? = null,          // first NL *inside* line, if any
+    val blockWidths: List<Int> = emptyList()
 )
 
 /**
@@ -431,6 +433,69 @@ fun DocumentState.splitFieldAt(fieldIdx: Int, pos: Pos) {
     fields[fieldIdx] = newTop
     fields.add(fieldIdx + 1, newBottom)
 }
+
+fun DocumentState.measureText(
+    string: AnnotatedString,
+    maxWidth: Int,
+    textMeasurer: TextMeasurer,
+    textStyle: TextStyle
+):TextLayoutResult{
+    val result = textMeasurer.measure(
+        text = string,
+        style = textStyle,
+        constraints = Constraints(maxWidth = maxWidth),
+        maxLines = 1,
+        softWrap = false
+    )
+    return result
+}
+
+fun DocumentState.measureField(
+    blocks: List<Block>,
+    maxWidth: Int,
+    textMeasurer: TextMeasurer,
+    textStyle: TextStyle
+):MeasureResult{
+    var sumWidths = 0
+
+    var didOF: Boolean = false
+    var hasHardBreak: Boolean = false
+    var hardBreakPos: Pos? = null
+    var overflowPos: Pos? = null
+    val blockWidths = mutableListOf<Int>()
+
+    for ((idx, blk) in blocks.withIndex()) {
+
+        val blockWidth = blk.measure(
+            textMeasurer,
+            textStyle,
+            maxWidth
+        )
+        blockWidths.add(idx, blockWidth)
+        if (blk is Block.DelimiterBlock && blk.kind == Block.DelimiterBlock.Kind.NewLine && hasHardBreak == false) {
+            hasHardBreak = true
+            hardBreakPos = Pos(idx, 0)
+            didOF = true
+        }
+
+        sumWidths += blockWidth
+        if(sumWidths > maxWidth && didOF == false){
+
+            didOF = true
+            overflowPos = Pos(idx, 0)
+
+        }
+    }
+
+    return MeasureResult(
+        width = sumWidths,
+        overflow = didOF,
+        overflowPos = overflowPos,
+        hardBreakPos = hardBreakPos,
+        blockWidths = blockWidths
+    )
+}
+
 fun DocumentState.measureLine(
     blocks: List<Block>,
     maxWidth: Int,
@@ -451,6 +516,7 @@ fun DocumentState.measureLine(
     }
     return MeasureResult(sum, false)
 }
+
 
 fun DocumentState.updateGlobalCaretPosition() {
     val caret = globalCaret.value
@@ -585,6 +651,153 @@ fun DocumentState.handleOnTextLayout(fieldId: String,blockId: String, result: Te
     println("123456789 LEAVING handleOnTextLayoutResult  in abstractfieldstateext line 147")
 }
 
+fun DocumentState.getMaxWidth(): Int{
+    return maxWidth
+}
+fun DocumentState.getDefaultTextStyle():TextStyle{
+    return defaultTextStyle
+}
+fun DocumentState.getTextMeasurer():TextMeasurer{
+    require(textMeasurer != null){"textMeasurer should not be null"}
+    return textMeasurer as TextMeasurer
+}
+
+/*
+This fxn is called from onValueChange callback within BasicTextField.
+We use this to update the associated TextBlock to said BasicTextField.
+We need to ensure that we do not update the field (identified via field id)
+with a TextBlock that would cause OF (ie the updated field's width exceeds the previous, which implies
+exceeding the max width constraint defined within DocumentState.
+ */
+fun DocumentState.processTFVUpdate(
+    fieldId: String,
+    blockId: String,
+    newValue: TextFieldValue
+) {
+    val fieldIndex = fields.indexOfFirst { it.id == fieldId }
+    require(fieldIndex > -1) { "field doesn't exist" }
+
+    val field = fields[fieldIndex]
+
+    val blockIndex = field.blocks.indexOfFirst { it.id == blockId }
+    require(blockIndex > -1) { "block doesn't exist" }
+    val measuredField = measureField(
+        blocks = field.blocks.toList(),
+        maxWidth = getMaxWidth(),
+        textMeasurer = getTextMeasurer(),
+        textStyle = getDefaultTextStyle()
+    )
+
+    val widthOfTextBlockBeforeUpdate = measuredField.blockWidths[blockIndex]
+
+    /*
+    Very importantly, it is understood that at this point, the field itself doesn't cause any overflow.
+    The onvaluechange should not been invoked if there was OF - OF should be handled before it would be invoked,
+    this idea is separate to the current function.
+     */
+    val widthToCauseOF = getMaxWidth() - widthOfTextBlockBeforeUpdate
+    require(widthOfTextBlockBeforeUpdate <= getMaxWidth()) { "Should be impossible. width of textblock should certainly be below max width." }
+    require(textMeasurer != null) { "textMeasurer should not be null." }
+    val measuredString = measureText(
+        newValue.annotatedString,
+        maxWidth,
+        textMeasurer!!,
+        defaultTextStyle
+    )
+
+    val updateCausesOF: Boolean = measuredString.size.width >= widthToCauseOF
+
+    val block = fields[fieldIndex].blocks[blockIndex] as Block.TextBlock
+    val newTFV = block.textFieldValue.copy(
+        annotatedString = newValue.annotatedString,
+        selection = newValue.selection
+    )
+    if (!updateCausesOF) {
+
+
+        fields[fieldIndex].blocks[blockIndex] = block.copy(textFieldValue = newTFV)
+        fields[fieldIndex].normalise()
+        // *** unconditionally sync the global caret to whatever the local selection now is ***
+        globalCaret.value = globalCaret.value.copy(
+            fieldId = fieldId,
+            blockId = block.id,
+            offsetInBlock = newValue.selection.start
+        )
+        // immediately recompute the global caret position on screen
+        onGlobalCaretMoved()
+        return
+    } else {
+        var localField = LocalFieldForMutation(
+            id = "deez nuts",
+            blocks = field.blocks
+        )
+
+        localField.blocks[blockIndex] = block
+        val localBlock = LocalTextBlockForMutation(
+            id = "my nuts",
+            textFieldValue = newTFV,
+        )
+
+        val measuredLocalField = measureField(
+            blocks = field.blocks.toList(),
+            maxWidth = getMaxWidth(),
+            textMeasurer = getTextMeasurer(),
+            textStyle = getDefaultTextStyle()
+        )
+
+        //short-circuit: if blockIndex is the last index of the field, then we can literally just split that fookin block and prepend the end of it to the below field.
+        if (blockIndex == localField.blocks.size - 1) {
+            if(measuredField.overflowPos == null) return
+            val splitBlock = splitTextBlock(block, measuredField.overflowPos!!.offsetInBlock)
+            fields[fieldIndex].blocks[localField.blocks.size-1] = splitBlock.first
+            fields[fieldIndex+1].blocks.add(0, splitBlock.second)
+        }
+        /*
+        otherwise, we must
+        1.) determine the type of the last block within the field.
+        2.) if text: same as above mate
+        3.) so, an image or a delimiter (perhaps not the case anymore, if we've updated the code since then)
+            Then, let's split AT this fookin block here, and prepend to the below field.
+         */
+        else {
+            val bid = localField.blocks.lastIndex
+            val blok = localField.blocks[bid]
+        }
+
+    }
+}
+
+@OptIn(ExperimentalUuidApi::class)
+fun DocumentState.splitTextBlock(block: Block.TextBlock, splitAt: Int):Pair<Block.TextBlock, Block.TextBlock>{
+
+    val origTFV = block.textFieldValue
+    val leftString = origTFV.annotatedString.subSequence(0, splitAt)
+    val rightString = origTFV.annotatedString.subSequence(splitAt, origTFV.annotatedString.length)
+
+        val leftTFV = TextFieldValue(
+            annotatedString = leftString,
+            selection = TextRange(leftString.length)
+        )
+
+        val rightTFV = TextFieldValue(
+            annotatedString = rightString,
+            selection = TextRange.Zero
+    )
+
+    val leftBlock = Block.TextBlock(
+        id = block.id,
+        textFieldValue = leftTFV,
+        focusRequester = block.focusRequester
+    )
+    val rightBlock = Block.TextBlock(
+        id = Uuid.random().toString(),
+        textFieldValue = rightTFV,
+        focusRequester = FocusRequester()
+    )
+
+    return Pair(leftBlock, rightBlock)
+
+}
 
 fun DocumentState.handleOnValueChange(fieldId: String, blockId: String, newValue: TextFieldValue){
     val fid = fields.indexOfFirst {

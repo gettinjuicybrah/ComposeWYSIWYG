@@ -24,9 +24,24 @@ internal fun Block.measure(
         maxLines = 1,
         softWrap = false
     ).size.width
-    is Block.ImageBlock -> intrinsicWidth              // already px
+    is Block.ImageBlock -> width              // already px
     is Block.DelimiterBlock -> 0                       // NL and TAB have no own width (tab handled later)
 }
+data class LocalFieldForMutation(
+    val id: String,
+    val blocks: MutableList<Block>
+)
+
+data class LocalTextBlockForMutation(
+    val id: String,
+    val textFieldValue: TextFieldValue,
+    var layoutCoordinates: LayoutCoordinates? = null,
+    var textLayoutResult: TextLayoutResult? = null,
+){
+    val length get() = textFieldValue.text.length
+    val width get() = textFieldValue.text.length
+}
+
 /** Coordinates within a block list */
 data class Pos(
     val blockIndexWithinList: Int,
@@ -35,6 +50,7 @@ data class Pos(
 sealed class Block {
     abstract val id: String
     abstract val length: Int
+    abstract val width: Int
     data class TextBlock(
         override val id: String,
         //override val length: Int = ,
@@ -44,11 +60,12 @@ sealed class Block {
         val focusRequester: FocusRequester
     ) : Block(){
         override val length get() = textFieldValue.text.length
+        override val width get() = textFieldValue.text.length
     }
 
     data class ImageBlock(
         override val id: String,
-        val intrinsicWidth: Int,      // px at native scale – set at insert / resize
+        override val width: Int,      // px at native scale – set at insert / resize
         override val length: Int = 1,
         val focusRequester: FocusRequester
     ) : Block()
@@ -56,7 +73,8 @@ sealed class Block {
     data class DelimiterBlock(
         override val id: String,
         val kind: Kind = Kind.NewLine,
-        override val length: Int = 1
+        override val length: Int = 1,
+        override val width: Int = 1
     ) : Block(){
         enum class Kind { NewLine, Tab /* add more later (Space, etc.) */ }
     }
