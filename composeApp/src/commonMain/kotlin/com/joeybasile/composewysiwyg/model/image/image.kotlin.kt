@@ -21,13 +21,16 @@ fun DocumentState.insertImageAtCaret(bytes: ByteArray, mime: String) {
     /* 1 ─ split host text at caret */
     val (leftTB, rightTB) = splitTextBlock(hostTB, caret.offsetInBlock)
 
-    /* 2 ─ build payload + blocks */
+
     val payload = ImagePayload(
         bytes = bytes,
         mime = mime,
-        naturalWidth = 0,   // fill in from decoder
-        naturalHeight = 0
+        naturalWidth = 1020,   // fill in from decoder
+        naturalHeight = 510
     )
+
+
+
     imageStore[payload.id] = payload
 
     val imgBlock = Block.ImageBlock(

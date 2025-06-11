@@ -15,10 +15,26 @@ import com.joeybasile.composewysiwyg.model.caret.moveGlobalCaretRight
 import com.joeybasile.composewysiwyg.model.caret.moveGlobalCaretUp
 import com.joeybasile.composewysiwyg.model.event.onEvent
 import com.joeybasile.composewysiwyg.model.*
+import com.joeybasile.composewysiwyg.model.image.insertImageAtCaret
+
 fun handleDocKeyEvent(
     event: KeyEvent,
     state: DocumentState
 ): Boolean {
+    if (event.type == KeyEventType.KeyDown && event.isCtrlPressed && event.key == Key.I) {
+        // ----- where to load the test picture ---------------------------------
+        // Desktop / JVM – read from working directory:
+        println("Working dir = " + System.getProperty("user.dir"))
+        val bytes = java.io.File("test.png").readBytes()
+        // Android – use assets/res/raw instead:
+        // val ctx = LocalContext.current
+        // val bytes = ctx.assets.open("test.png").readBytes()
+
+        // ----------------------------------------------------------------------
+
+        state.insertImageAtCaret(bytes, "image/png")
+        return true
+    }
 
     if (event.type == KeyEventType.KeyDown && !event.isShiftPressed && event.key == Key.Backspace) {
         state.onBackSpace()

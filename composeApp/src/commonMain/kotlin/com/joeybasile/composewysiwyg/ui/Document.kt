@@ -48,6 +48,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
@@ -65,6 +66,8 @@ import com.joeybasile.composewysiwyg.model.normalise
 import com.joeybasile.composewysiwyg.model.processTFVUpdate
 import com.joeybasile.composewysiwyg.model.updateBlockCoords
 import com.joeybasile.composewysiwyg.model.updateGlobalCaretPosition
+
+import coil3.compose.*
 
 /**
  * Renders the whole document.  Each [Field] becomes one item in the vertical list.
@@ -223,14 +226,15 @@ fun ImageBlockView(block: Block.ImageBlock,
                    modifier: Modifier = Modifier) {
 
     val payload = remember(block.payloadId) {
-        state.imageStore[block.payloadId]   // could be null if gc’ed
+        state.imageStore[block.payloadId]   // could be null if gc'ed
     }
 
-    // Fallback 1×1 placeholder prevents crashes if payload vanished
-    val painter = remember(payload) {
-        payload?.let { rememberAsyncImagePainter(it.bytes) }
-            ?: rememberVectorPainter(Icons.Default.BrokenImage)
-    }
+    // Move Composable calls outside of remember block
+    val asyncPainter = payload?.let { rememberAsyncImagePainter(it.bytes) }
+    val fallbackPainter = rememberVectorPainter(Icons.Default.Star)
+
+    // Now use regular conditional logic to choose the painter
+    val painter = asyncPainter ?: fallbackPainter
 
     Image(
         painter = painter,
