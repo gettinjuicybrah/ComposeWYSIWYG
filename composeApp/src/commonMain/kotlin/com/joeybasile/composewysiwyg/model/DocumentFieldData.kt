@@ -3,6 +3,7 @@ package com.joeybasile.composewysiwyg.model
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
@@ -12,21 +13,44 @@ import androidx.compose.ui.unit.Constraints
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
-internal fun Block.measure(
+internal fun Block.TextBlock.measure(
     textMeasurer: TextMeasurer,
     textStyle: TextStyle,
     maxWidthPx: Int
-): Int = when (this) {
-    is Block.TextBlock -> textMeasurer.measure(
+): TextLayoutResult {
+    val result = textMeasurer.measure(
         text = textFieldValue.annotatedString,
         style = textStyle,
         constraints = Constraints(maxWidth = maxWidthPx),
         maxLines = 1,
         softWrap = false
-    ).size.width
-    is Block.ImageBlock -> width              // already px
-    is Block.DelimiterBlock -> 0                       // NL and TAB have no own width (tab handled later)
+    )
+    val xPos = maxWidthPx.toFloat() - Float.MIN_VALUE
+    val maxMeasuredOffset = result.getOffsetForPosition(Offset(xPos, 0f))
+    //val maxFittingOffset = result.getLineEnd(lineIndex = 0, visibleEnd = true)
+    println("WITHIN TEXTBLOCK.MEASURE. maxFittingOffset: $maxMeasuredOffset, textFieldValue.text.length: ${textFieldValue.text.length} ")
+    val pixelWidth = result.size.width
+    return result//Pair(maxMeasuredOffset, pixelWidth)
 }
+
+internal fun Block.ImageBlock.measure(
+    textMeasurer: TextMeasurer,
+    textStyle: TextStyle,
+    maxWidthPx: Int
+): Int {
+    return width
+
+}
+
+internal fun Block.DelimiterBlock.measure(
+    textMeasurer: TextMeasurer,
+    textStyle: TextStyle,
+    maxWidthPx: Int
+): Int {
+    return width
+
+}
+
 data class LocalFieldForMutation(
     val id: String,
     val blocks: MutableList<Block>
@@ -37,7 +61,7 @@ data class LocalTextBlockForMutation(
     val textFieldValue: TextFieldValue,
     var layoutCoordinates: LayoutCoordinates? = null,
     var textLayoutResult: TextLayoutResult? = null,
-){
+) {
     val length get() = textFieldValue.text.length
     val width get() = textFieldValue.text.length
 }
@@ -47,10 +71,12 @@ data class Pos(
     val blockIndexWithinList: Int,
     val offsetInBlock: Int        // 0‥length ; for non‑text blocks always 0/1
 )
+
 sealed class Block {
     abstract val id: String
     abstract val length: Int
     abstract val width: Int
+
     data class TextBlock(
         override val id: String,
         //override val length: Int = ,
@@ -58,7 +84,7 @@ sealed class Block {
         var layoutCoordinates: LayoutCoordinates? = null,
         var textLayoutResult: TextLayoutResult? = null,
         val focusRequester: FocusRequester
-    ) : Block(){
+    ) : Block() {
         override val length get() = textFieldValue.text.length
         override val width get() = textFieldValue.text.length
     }
@@ -74,8 +100,8 @@ sealed class Block {
         override val id: String,
         val kind: Kind = Kind.NewLine,
         override val length: Int = 1,
-        override val width: Int = 1
-    ) : Block(){
+        override val width: Int = 0
+    ) : Block() {
         enum class Kind { NewLine, Tab /* add more later (Space, etc.) */ }
     }
 }
@@ -84,6 +110,7 @@ data class Field(
     val id: String,
     val blocks: SnapshotStateList<Block>
 )
+
 /*
 Safe concatenation of two TextBlocks
  */
@@ -119,6 +146,7 @@ fun Field.normalise(): Field {
 
     return copy(blocks = mutableStateListOf(*tmp.toTypedArray()))
 }
+
 /**
  * Applies structural invariants directly to a mutable list of blocks.
  * This function MUTATES the list in place.
@@ -150,7 +178,9 @@ internal fun normalizeBlockList(blocks: MutableList<Block>) {
             blocks.add(i + 1, emptyTextBlock())
         }
         i++
-    }}
+    }
+}
+
 @OptIn(ExperimentalUuidApi::class)
 fun emptyTextBlock() = Block.TextBlock(
     id = Uuid.random().toString(),

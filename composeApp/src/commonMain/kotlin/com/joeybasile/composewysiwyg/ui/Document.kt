@@ -54,6 +54,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import com.joeybasile.composewysiwyg.model.Block
 import com.joeybasile.composewysiwyg.model.Field
+import com.joeybasile.composewysiwyg.model.aprocessTFVUpdate
+import com.joeybasile.composewysiwyg.model.bprocessTFVUpdate
 import com.joeybasile.composewysiwyg.model.handleFocusChange
 import com.joeybasile.composewysiwyg.model.handleOnTextLayout
 import com.joeybasile.composewysiwyg.model.handleOnValueChange
@@ -166,9 +168,9 @@ private fun TextBlock(
                 value = block.textFieldValue,
                 //value = block.value,
                 onValueChange = { newValue ->
-                    state.processTFVUpdate(fieldId, block.id, newValue)
+                    state.bprocessTFVUpdate(fieldId, block.id, newValue)
                     //state.handleOnValueChange(fieldId, block.id, newValue)
-                    println("HANDLED TEXTFIELDVALUE. text: ${newValue.text}")
+                    //println("HANDLED TEXTFIELDVALUE. text: ${newValue.text}")
                     println("")
                     println("")
                 },

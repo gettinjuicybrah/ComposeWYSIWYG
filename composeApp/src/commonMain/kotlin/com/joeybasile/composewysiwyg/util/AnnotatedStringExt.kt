@@ -100,7 +100,7 @@ public fun AnnotatedString.deleteCharAtCharIndex(index: Int): AnnotatedString {
  */
 public fun AnnotatedString.deleteCharBeforeCaretOffset(caretOffset: Int): AnnotatedString {
     // caretOffset must be at least 1 (so there's a char before it) and at most length
-    require(caretOffset in 1..this.length) {
+    require(caretOffset in 0..this.length) {
         "caretOffset $caretOffset out of bounds for deletion on length $length"
     }
 
