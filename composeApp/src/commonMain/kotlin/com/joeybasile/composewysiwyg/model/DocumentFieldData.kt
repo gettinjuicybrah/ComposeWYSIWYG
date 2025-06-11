@@ -93,7 +93,8 @@ sealed class Block {
         override val id: String,
         override val width: Int,      // px at native scale – set at insert / resize
         override val length: Int = 1,
-        val focusRequester: FocusRequester
+        val focusRequester: FocusRequester,
+        val payloadId: String
     ) : Block()
 
     data class DelimiterBlock(

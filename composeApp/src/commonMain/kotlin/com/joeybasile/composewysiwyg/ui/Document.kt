@@ -47,11 +47,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.Text
+import androidx.compose.material.icons.Icons
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import com.joeybasile.composewysiwyg.model.Block
 import com.joeybasile.composewysiwyg.model.Field
 import com.joeybasile.composewysiwyg.model.aprocessTFVUpdate
@@ -140,10 +142,10 @@ private fun Field(
                         onKeyEvent = onKeyEvent,
                         focusedBlock = focusedBlock,
                         )
-                    is Block.ImageBlock -> ImageBlock(
+                    is Block.ImageBlock -> ImageBlockView(
                         block,
-                        onKeyEvent = onKeyEvent,
-                        focusedBlock = focusedBlock
+                        state,
+                        modifier
                     )
                     is Block.DelimiterBlock -> DelimiterBlock(block)
                 }
@@ -215,8 +217,35 @@ private fun TextBlock(
         }
     }
 }
+@Composable
+fun ImageBlockView(block: Block.ImageBlock,
+                   state: DocumentState,
+                   modifier: Modifier = Modifier) {
 
+    val payload = remember(block.payloadId) {
+        state.imageStore[block.payloadId]   // could be null if gc’ed
+    }
+
+    // Fallback 1×1 placeholder prevents crashes if payload vanished
+    val painter = remember(payload) {
+        payload?.let { rememberAsyncImagePainter(it.bytes) }
+            ?: rememberVectorPainter(Icons.Default.BrokenImage)
+    }
+
+    Image(
+        painter = painter,
+        contentDescription = "inline image",
+        modifier = modifier
+            .width(block.width.dp)
+            .pointerInput(Unit) {
+                // enable selection-start or drag-to-resize later
+            }
+            .focusRequester(block.focusRequester)
+            .onPreviewKeyEvent { ev -> handleDocKeyEvent(ev, state) }
+    )
+}
 /** Simple bitmap render; you can swap in AsyncImage, Coil, etc. later. */
+/*
 @Composable
 private fun ImageBlock(
     block: Block.ImageBlock,
@@ -242,7 +271,7 @@ private fun ImageBlock(
 
  */
 }
-
+*/
 /**
  * Placeholder implementation.
  *

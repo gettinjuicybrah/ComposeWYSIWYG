@@ -36,6 +36,7 @@ import com.joeybasile.composewysiwyg.model.style.CurrentCharStyle
 import com.joeybasile.composewysiwyg.model.style.ToolbarState
 import com.joeybasile.composewysiwyg.model.caret.GlobalCaret
 import com.joeybasile.composewysiwyg.model.event.onEvent
+import com.joeybasile.composewysiwyg.model.image.ImagePayload
 import com.joeybasile.composewysiwyg.model.selection.SelectionState
 import com.joeybasile.composewysiwyg.model.style.applySpanStyles
 import com.joeybasile.composewysiwyg.model.style.resetCurrentCharStyleToDefault
@@ -84,7 +85,7 @@ fun rememberDocumentState(): DocumentState {
  * @property scope A [CoroutineScope] that can be used for asynchronous operations if needed.
  */
 class DocumentState(val scope: CoroutineScope) {
-
+    val imageStore = mutableMapOf<String, ImagePayload>()
     /** Snapshot lists Compose will observe directly */
     // The `fields` property now holds the UI-mutable `Field` data class instances.
     // Changes to this list (add, remove, reorder) and changes *within* the `Field` objects
