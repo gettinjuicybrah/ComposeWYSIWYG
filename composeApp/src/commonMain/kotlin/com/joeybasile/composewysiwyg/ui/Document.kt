@@ -108,7 +108,7 @@ fun Document(
                 }
             }
     ) {
-        LazyColumn(modifier = modifier.fillMaxSize()) {
+        LazyColumn() {
             items(state.fields, key = { it.id }) { field ->
                 println("FIELDS:")
                 println()
@@ -151,7 +151,7 @@ private fun Field(
     focusedBlock: MutableState<String>,
     modifier: Modifier = Modifier,
 ) {
-    Row(modifier = modifier) {
+    Row(verticalAlignment = Alignment.Bottom) {
         field.normalise()
         field.blocks.forEach { block ->
             key(block.id) {
@@ -203,6 +203,7 @@ private fun TextBlock(
                     //normalize the field whenever a layout result occurs.
 
                 },
+
                 modifier = Modifier
                     .background(color = Color.LightGray)
                     .onGloballyPositioned { layoutCoordinates ->
@@ -259,7 +260,7 @@ fun ImageBlockView(block: Block.ImageBlock,
         painter = painter,
         contentDescription = "inline image",
         modifier = modifier
-            .width(block.width.dp)
+            //.width(block.width.dp)
             .pointerInput(Unit) {
                 // enable selection-start or drag-to-resize later
             }
@@ -310,12 +311,15 @@ private fun DelimiterBlock(
     when (block.kind) {
         Block.DelimiterBlock.Kind.NewLine -> {
          Text(modifier = modifier, text = "new line")
+            /*
             Spacer(
                 Modifier
                     .fillMaxWidth()
                     .height(0.dp)
                    // .background(color = Color.Blue)
             )
+
+             */
         }
         Block.DelimiterBlock.Kind.Tab -> TODO()
     }
