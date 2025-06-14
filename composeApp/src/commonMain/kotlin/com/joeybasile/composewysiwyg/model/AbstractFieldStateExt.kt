@@ -200,10 +200,10 @@ fun DocumentState.onBackSpace() {
         (!isCaretAtOriginOfField() && !doesFieldHaveNL() && !isFieldLast(globalCaret.value.fieldId))
 
     val requirePullup: Boolean = pullupCaseA || pullupCaseB
-
+    println(" selection state is active: ${selectionState.isActive}")
     //Right now, only case is for inactive selection.
     if (!selectionState.isActive) {
-
+        println("require pullup: ${requirePullup}")
         //This implies that the offset is > 0 (and of course witin a textblock) and the field has a newline block delimiter at the end, implying that
         //any potential fields below would not be pulled up, because the newline delimiter block is 'preventing' such.
         if (!requirePullup) {
@@ -214,9 +214,17 @@ fun DocumentState.onBackSpace() {
             val blocks = fields[fieldIdx].blocks
 
             val curIdx = blocks.indexOfFirst { it.id == caret.blockId }
-            if (curIdx < 0) return
-            val curTB = blocks[curIdx] as? Block.TextBlock ?: return   // P-5 guarantees this cast
+            if (curIdx < 0){
+                println("CUR INDX <0, RETURNING FROM BACKSPACE")
+                return }
 
+            if(!(blocks[curIdx] is Block.TextBlock)) {
+                println("${blocks[curIdx]}")
+                println("current block is NOT a text block. RETURNING.")
+                return
+            }   // P-5 guarantees this cast
+            else{
+                val curTB = blocks[curIdx] as Block.TextBlock
             /* ───────────── 1) ordinary character deletion ───────────── */
             if (caret.offsetInBlock > 0) {
                 val oldAS = curTB.textFieldValue.annotatedString
@@ -233,7 +241,7 @@ fun DocumentState.onBackSpace() {
                 globalCaret.value = caret.copy(offsetInBlock = caret.offsetInBlock - 1)
                 onGlobalCaretMoved()
                 return
-            }
+            }}
             /*
                         /* ───────────── 2) traversal-unit deletion (offset == 0) ───────────── */
                         if (curIdx == 0) return                         // nothing to the left
@@ -269,7 +277,11 @@ fun DocumentState.onBackSpace() {
 
              */
             /* ───────────── 2) traversal-unit deletion (offset == 0) ───────────── */
+            println(" BEFORE THE CHECK OF CURRENT BLK INDEX 0, PROGRAMMED TO RETURN IF SO.")
+            println(" BEFORE THE CHECK OF CURRENT BLK INDEX 0, PROGRAMMED TO RETURN IF SO.")
+            println(" BEFORE THE CHECK OF CURRENT BLK INDEX 0, PROGRAMMED TO RETURN IF SO.")
             if (curIdx == 0) return                         // nothing to the left
+            println("DID NOT RETURN")
             val prev = blocks[curIdx - 1]
 
 // Currently we only expect ImageBlock or (in the future) other non-text units
@@ -876,6 +888,12 @@ fun DocumentState.handleOnTextLayout(fieldId: String, blockId: String, result: T
         it is Block.TextBlock && it.id == blockId
 
     }
+    println("current field index: ${fields.indexOfFirst { it.id == fieldId }}")
+    println("current block uuid: ${blockId}")
+    println("size of block list in field: ${fields[fid].blocks.size}")
+    for(blk in fields[fid].blocks){
+        println("^^^^^^^^^^^^^^^^^^^^^^^^ ${blk.id} AND THE BLK ITSELF: ${blk}")
+    }
     require(blocksList[bid] is Block.TextBlock)
     require(fid > -1) { "field doesn't exit" }
 
@@ -1000,89 +1018,27 @@ fun DocumentState.bprocessTFVUpdate(
         //Then we will have to update the global caret within genericPullDown(). Boo.
         //if(caretDist >= xPos){
 
-        require(locGlobalOverflowPos != null && locGlobCaretOffset != null) { "should not be null" }
-        if (locGlobCaretOffset >= locGlobalOverflowPos) {
-            println("^^^^^^^^^^^^^^^^^^^^^^^^ caretDist GREATER OR EQUAL TO xPos")
-            val splitPos = result.measureResult.overflowPos
-            println("splitPos: $splitPos")
-            val caretSnapshot = globalCaret.value
+        //require(locGlobalOverflowPos != null && locGlobCaretOffset != null) { "should not be null" }
+        if(locGlobalOverflowPos != null && locGlobCaretOffset != null) {
+            if (locGlobCaretOffset >= locGlobalOverflowPos) {
+                println("^^^^^^^^^^^^^^^^^^^^^^^^ caretDist GREATER OR EQUAL TO xPos")
+                val splitPos = result.measureResult.overflowPos
+                println("splitPos: $splitPos")
+                val caretSnapshot = globalCaret.value
 
-            val proposedCurrentFieldBlocks = fittingBlocks
-            val proposedOverflowFieldBlocks = overflowBlocks
-            val selection = locGlobCaretOffset - locGlobalOverflowPos
+                val proposedCurrentFieldBlocks = fittingBlocks
+                val proposedOverflowFieldBlocks = overflowBlocks
+                val selection = locGlobCaretOffset - locGlobalOverflowPos
 
-            fields.set(
-                fieldIndex, fields[fieldIndex].copy(
-                    id = fieldId,
-                    blocks = fittingBlocks.toMutableStateList()
-                )
-            )
-
-            //must insert field below, then prepend proposedOFBlocks to it, then update caret.
-            if (fields.lastIndex == fieldIndex) {
-                val oid = overflowBlocks.indexOfFirst { it is Block.TextBlock }
-                val tb = overflowBlocks[oid] as Block.TextBlock
-                overflowBlocks.set(
-                    oid,
-                    tb.copy(
-                        textFieldValue = tb.textFieldValue.copy(
-                            selection = TextRange(
-                                selection,
-                                selection
-                            )
-                        )
+                fields.set(
+                    fieldIndex, fields[fieldIndex].copy(
+                        id = fieldId,
+                        blocks = fittingBlocks.toMutableStateList()
                     )
                 )
-                val newFieldId = Uuid.random().toString()
-                fields.add(
-                    fieldIndex + 1,
-                    Field(
-                        id = newFieldId,
-                        blocks = overflowBlocks.toMutableStateList()
-                    )
-                )
-                globalCaret.value = globalCaret.value.copy(
-                    fieldId = newFieldId,
-                    blockId = tb.id,
-                    offsetInBlock = selection
-                )
-                onGlobalCaretMoved()
-            } else {
 
-                if (overflowBlocks.size == 1 && overflowBlocks[0] is Block.DelimiterBlock) {
-                    val block = overflowBlocks[0] as Block.DelimiterBlock
-                    if (block.kind == Block.DelimiterBlock.Kind.NewLine) {
-                        println("OI WE'VE GOT A NEW LINE MATE")
-                        val uuid = Uuid.random().toString()
-                        val newFieldId = Uuid.random().toString()
-                        //added because have to have text block in order to render caret.
-                        overflowBlocks.add(
-                            0, Block.TextBlock(
-                                id = uuid,
-                                textFieldValue = TextFieldValue(
-                                    annotatedString = AnnotatedString(""),
-                                    selection = TextRange(0, 0)
-                                ),
-                                focusRequester = FocusRequester()
-                            )
-                        )
-                        fields.add(
-                            fieldIndex + 1,
-                            Field(
-                                id = newFieldId,
-                                blocks = overflowBlocks.toMutableStateList()
-                            )
-                        )
-                        globalCaret.value = globalCaret.value.copy(
-                            fieldId = newFieldId,
-                            blockId = uuid,
-                            offsetInBlock = 0
-                        )
-                        onGlobalCaretMoved()
-
-                    }
-                } else {
-
+                //must insert field below, then prepend proposedOFBlocks to it, then update caret.
+                if (fields.lastIndex == fieldIndex) {
                     val oid = overflowBlocks.indexOfFirst { it is Block.TextBlock }
                     val tb = overflowBlocks[oid] as Block.TextBlock
                     overflowBlocks.set(
@@ -1096,39 +1052,102 @@ fun DocumentState.bprocessTFVUpdate(
                             )
                         )
                     )
-                    fields[fieldIndex + 1] = fields[fieldIndex + 1].copy(
-                        blocks = (overflowBlocks + fields[fieldIndex + 1].blocks).toMutableStateList()
+                    val newFieldId = Uuid.random().toString()
+                    fields.add(
+                        fieldIndex + 1,
+                        Field(
+                            id = newFieldId,
+                            blocks = overflowBlocks.toMutableStateList()
+                        )
                     )
                     globalCaret.value = globalCaret.value.copy(
-                        fieldId = fields[fieldIndex + 1].id,
+                        fieldId = newFieldId,
                         blockId = tb.id,
                         offsetInBlock = selection
                     )
                     onGlobalCaretMoved()
+                } else {
+
+                    if (overflowBlocks.size == 1 && overflowBlocks[0] is Block.DelimiterBlock) {
+                        val block = overflowBlocks[0] as Block.DelimiterBlock
+                        if (block.kind == Block.DelimiterBlock.Kind.NewLine) {
+                            println("OI WE'VE GOT A NEW LINE MATE")
+                            val uuid = Uuid.random().toString()
+                            val newFieldId = Uuid.random().toString()
+                            //added because have to have text block in order to render caret.
+                            overflowBlocks.add(
+                                0, Block.TextBlock(
+                                    id = uuid,
+                                    textFieldValue = TextFieldValue(
+                                        annotatedString = AnnotatedString(""),
+                                        selection = TextRange(0, 0)
+                                    ),
+                                    focusRequester = FocusRequester()
+                                )
+                            )
+                            fields.add(
+                                fieldIndex + 1,
+                                Field(
+                                    id = newFieldId,
+                                    blocks = overflowBlocks.toMutableStateList()
+                                )
+                            )
+                            globalCaret.value = globalCaret.value.copy(
+                                fieldId = newFieldId,
+                                blockId = uuid,
+                                offsetInBlock = 0
+                            )
+                            onGlobalCaretMoved()
+
+                        }
+                    } else {
+
+                        val oid = overflowBlocks.indexOfFirst { it is Block.TextBlock }
+                        val tb = overflowBlocks[oid] as Block.TextBlock
+                        overflowBlocks.set(
+                            oid,
+                            tb.copy(
+                                textFieldValue = tb.textFieldValue.copy(
+                                    selection = TextRange(
+                                        selection,
+                                        selection
+                                    )
+                                )
+                            )
+                        )
+                        fields[fieldIndex + 1] = fields[fieldIndex + 1].copy(
+                            blocks = (overflowBlocks + fields[fieldIndex + 1].blocks).toMutableStateList()
+                        )
+                        globalCaret.value = globalCaret.value.copy(
+                            fieldId = fields[fieldIndex + 1].id,
+                            blockId = tb.id,
+                            offsetInBlock = selection
+                        )
+                        onGlobalCaretMoved()
+                    }
                 }
+
+
+
+                genericPullDown(
+                    initialProposedField = fields[fieldIndex + 1],
+                    initialFieldIdInListToReplaceWith = fields[fieldIndex + 1].id,
+                    purposeTFVUpdate = false
+                )
+
+
             }
-
-
-
-            genericPullDown(
-                initialProposedField = fields[fieldIndex + 1],
-                initialFieldIdInListToReplaceWith = fields[fieldIndex + 1].id,
-                purposeTFVUpdate = false
-            )
-
-
-        }
-        //Means that the caret will not be wrapped below, but stay on the same line.
-        else {
-            println("^^^^^^^^^^^^^^^^^^^^^^^^ caretDist LESS THAN xPos")
-            globalCaret.value = globalCaret.value.copy(
-                fieldId = fieldId,
-                blockId = block.id,
-                offsetInBlock = newValue.selection.start
-            )
-            // immediately recompute the global caret position on screen
-            onGlobalCaretMoved()
-            /*
+            //Means that the caret will not be wrapped below, but stay on the same line.
+            else {
+                println("^^^^^^^^^^^^^^^^^^^^^^^^ caretDist LESS THAN xPos")
+                globalCaret.value = globalCaret.value.copy(
+                    fieldId = fieldId,
+                    blockId = block.id,
+                    offsetInBlock = newValue.selection.start
+                )
+                // immediately recompute the global caret position on screen
+                onGlobalCaretMoved()
+                /*
                         genericPullDown(
                             initialProposedField = proposedField,
                             initialFieldIdInListToReplaceWith = fieldId,
@@ -1138,6 +1157,7 @@ fun DocumentState.bprocessTFVUpdate(
              */
 
 
+            }
         }
 
     }

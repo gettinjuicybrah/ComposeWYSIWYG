@@ -37,6 +37,10 @@ fun handleDocKeyEvent(
     }
 
     if (event.type == KeyEventType.KeyDown && !event.isShiftPressed && event.key == Key.Backspace) {
+        println("BACKSPACE PRESSED")
+        println("BACKSPACE PRESSED")
+        println("BACKSPACE PRESSED")
+        println("BACKSPACE PRESSED")
         state.onBackSpace()
         /*
         state.pullUp(

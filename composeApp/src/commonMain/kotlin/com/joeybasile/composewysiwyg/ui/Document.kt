@@ -68,6 +68,7 @@ import com.joeybasile.composewysiwyg.model.updateBlockCoords
 import com.joeybasile.composewysiwyg.model.updateGlobalCaretPosition
 
 import coil3.compose.*
+import com.joeybasile.composewysiwyg.model.onGlobalCaretMoved
 
 /**
  * Renders the whole document.  Each [Field] becomes one item in the vertical list.
@@ -90,6 +91,7 @@ fun Document(
             }
             .drawWithContent {
                 drawContent()
+                state.onGlobalCaretMoved()
                 val caret = state.globalCaret.value
                 if (caret.globalPosition != Offset.Unspecified && caret.isVisible) {
                     //println("-------------------------------------------------------------------------------")
@@ -108,6 +110,22 @@ fun Document(
     ) {
         LazyColumn(modifier = modifier.fillMaxSize()) {
             items(state.fields, key = { it.id }) { field ->
+                println("FIELDS:")
+                println()
+                println("------------------------")
+                println()
+                val curIndx = state.fields.indexOfFirst { it.id == field.id }
+                println("Field Index $curIndx and Field ID: ${field.id}")
+                println("Content of Field index: $curIndx:${field.blocks}")
+                for(blk in field.blocks){
+                    println("   {{{{")
+                    println("   Block Index: ${field.blocks.indexOfFirst { it.id == blk.id }}")
+                    println("Block info: ${blk}")
+                    println("}}}}")
+                }
+                println()
+                println("------------------------")
+                println()
                 Field(
                     field = field,
                     onKeyEvent = { event, _ ->
@@ -213,7 +231,8 @@ private fun TextBlock(
                 println("FOCUS REQUESTED IN TextBlock ${block.textFieldValue.text}")
                 block.focusRequester.requestFocus()
             //state.handleFocusChange(fieldId, block.id)
-                state.updateGlobalCaretPosition()
+                state.onGlobalCaretMoved()
+                //state.updateGlobalCaretPosition()
             } catch (e: Exception) {
                 println("CATACHY ")
             }
