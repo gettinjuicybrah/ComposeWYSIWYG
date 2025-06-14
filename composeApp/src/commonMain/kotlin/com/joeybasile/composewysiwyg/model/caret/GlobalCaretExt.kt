@@ -1,14 +1,9 @@
 package com.joeybasile.composewysiwyg.model.caret
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
-import com.joeybasile.composewysiwyg.model.Block
+import com.joeybasile.composewysiwyg.model.document.Block
 import com.joeybasile.composewysiwyg.model.DocumentState
-import com.joeybasile.composewysiwyg.model.Field
+import com.joeybasile.composewysiwyg.model.document.Field
 import com.joeybasile.composewysiwyg.model.*
 import com.joeybasile.composewysiwyg.model.getFieldById
 

@@ -4,13 +4,12 @@ import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
-import com.joeybasile.composewysiwyg.model.Block
+import com.joeybasile.composewysiwyg.model.document.Block
 import com.joeybasile.composewysiwyg.model.DocumentState
-import com.joeybasile.composewysiwyg.model.Field
-import com.joeybasile.composewysiwyg.model.Pos
+import com.joeybasile.composewysiwyg.model.document.Field
+import com.joeybasile.composewysiwyg.model.document.Pos
 import com.joeybasile.composewysiwyg.model.getFieldReport
-import com.joeybasile.composewysiwyg.model.normalise
-import com.joeybasile.composewysiwyg.model.onGlobalCaretMoved
+import com.joeybasile.composewysiwyg.model.document.normalise
 import com.joeybasile.composewysiwyg.model.splitFieldAt
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -166,37 +165,7 @@ fun DocumentState.genericPullDown(
     }
 
 }
-/**
- * Returns the zero-based “global” character offset of the given `blockId`
- * inside the supplied `field`, or `null` when
- *  • the block is not present in this field, or
- *  • the supplied `offsetInBlock` is outside the block’s bounds.
- *
- * Complexity: O(n) where n = number of blocks in the field.
- */
-fun DocumentState.getLocGlobalFieldOffsetForABlock(
-    field: Field,
-    blockId: String,
-    offsetInBlock: Int
-): Int? {
-    var runningTotal = 0
 
-    for (block in field.blocks) {
-        if (block.id == blockId) {
-            // Offset must be inside the block’s own range
-            return if (offsetInBlock in 0..block.length) {
-                runningTotal + offsetInBlock
-            } else {
-                null        // caller asked for an invalid in-block offset
-            }
-        }
-
-        runningTotal += block.length
-    }
-
-    // No block with that ID found in this field
-    return null
-}
 
 /**
  * Returns the total number of logical “characters” (length units)

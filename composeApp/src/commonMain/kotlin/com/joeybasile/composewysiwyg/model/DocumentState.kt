@@ -8,41 +8,24 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshots.SnapshotStateList
-import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
-import com.joeybasile.composewysiwyg.events.DocumentEvent
 import com.joeybasile.composewysiwyg.model.style.CurrentCharStyle
 import com.joeybasile.composewysiwyg.model.style.ToolbarState
 import com.joeybasile.composewysiwyg.model.caret.GlobalCaret
-import com.joeybasile.composewysiwyg.model.event.onEvent
+import com.joeybasile.composewysiwyg.model.document.Block
+import com.joeybasile.composewysiwyg.model.document.Field
 import com.joeybasile.composewysiwyg.model.image.ImagePayload
-import com.joeybasile.composewysiwyg.model.selection.SelectionState
-import com.joeybasile.composewysiwyg.model.style.applySpanStyles
-import com.joeybasile.composewysiwyg.model.style.resetCurrentCharStyleToDefault
-import com.joeybasile.composewysiwyg.model.style.resetToolbarToDefault
+import com.joeybasile.composewysiwyg.model.selection.GlobalSelectionState
 import com.joeybasile.composewysiwyg.ui.rememberLineMeasurer
-import com.joeybasile.composewysiwyg.util.sliceRange
 import kotlinx.coroutines.CoroutineScope
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -138,7 +121,8 @@ class DocumentState(val scope: CoroutineScope) {
 
     val maxWidth: Int = 500
 
-    var selectionState by mutableStateOf(SelectionState())
+    var globalSelectionState by mutableStateOf(GlobalSelectionState())
+
     fun setRootCoords(coords: LayoutCoordinates){
         rootReferenceCoordinates.value = rootReferenceCoordinates.value.copy(coords)
     }

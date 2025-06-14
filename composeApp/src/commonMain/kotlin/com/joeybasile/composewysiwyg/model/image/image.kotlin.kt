@@ -1,11 +1,11 @@
 package com.joeybasile.composewysiwyg.model.image
 
 import androidx.compose.ui.focus.FocusRequester
-import com.joeybasile.composewysiwyg.model.Block
+import com.joeybasile.composewysiwyg.model.document.Block
 import com.joeybasile.composewysiwyg.model.DocumentState
-import com.joeybasile.composewysiwyg.model.emptyTextBlock
+import com.joeybasile.composewysiwyg.model.document.emptyTextBlock
 import com.joeybasile.composewysiwyg.model.linewrap.splitTextBlock
-import com.joeybasile.composewysiwyg.model.normalise
+import com.joeybasile.composewysiwyg.model.document.normalise
 import com.joeybasile.composewysiwyg.model.onGlobalCaretMoved
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -28,7 +28,6 @@ fun DocumentState.insertImageAtCaret(bytes: ByteArray, mime: String) {
         naturalWidth = 1020,   // fill in from decoder
         naturalHeight = 510
     )
-
 
 
     imageStore[payload.id] = payload

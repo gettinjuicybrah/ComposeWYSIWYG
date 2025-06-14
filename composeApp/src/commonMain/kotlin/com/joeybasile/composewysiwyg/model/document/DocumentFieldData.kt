@@ -1,10 +1,11 @@
-package com.joeybasile.composewysiwyg.model
+package com.joeybasile.composewysiwyg.model.document
 
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
@@ -71,17 +72,22 @@ data class Pos(
     val blockIndexWithinList: Int,
     val offsetInBlock: Int        // 0‥length ; for non‑text blocks always 0/1
 )
+/*
+length is for calculating 'locally global' position when considering a field's block list
+(this is because textblock itself is also a list, really)
 
+width is for the literal graphical width
+ */
 sealed class Block {
     abstract val id: String
     abstract val length: Int
     abstract val width: Int
+    abstract var layoutCoordinates: LayoutCoordinates?
 
     data class TextBlock(
         override val id: String,
-        //override val length: Int = ,
         val textFieldValue: TextFieldValue,
-        var layoutCoordinates: LayoutCoordinates? = null,
+        override var layoutCoordinates: LayoutCoordinates? = null,
         var textLayoutResult: TextLayoutResult? = null,
         val focusRequester: FocusRequester
     ) : Block() {
@@ -91,6 +97,7 @@ sealed class Block {
 
     data class ImageBlock(
         override val id: String,
+        override var layoutCoordinates: LayoutCoordinates? = null,
         override val width: Int,      // px at native scale – set at insert / resize
         override val length: Int = 1,
         val focusRequester: FocusRequester,
@@ -99,6 +106,7 @@ sealed class Block {
 
     data class DelimiterBlock(
         override val id: String,
+        override var layoutCoordinates: LayoutCoordinates? = null,
         val kind: Kind = Kind.NewLine,
         override val length: Int = 1,
         override val width: Int = 0
@@ -185,6 +193,6 @@ internal fun normalizeBlockList(blocks: MutableList<Block>) {
 @OptIn(ExperimentalUuidApi::class)
 fun emptyTextBlock() = Block.TextBlock(
     id = Uuid.random().toString(),
-    textFieldValue = TextFieldValue(""),
+    textFieldValue = TextFieldValue(annotatedString = AnnotatedString("")),
     focusRequester = FocusRequester()
 )

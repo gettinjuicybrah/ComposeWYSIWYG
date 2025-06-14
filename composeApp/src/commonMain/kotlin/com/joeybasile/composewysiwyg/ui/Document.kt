@@ -2,15 +2,9 @@ package com.joeybasile.composewysiwyg.ui
 
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.LocalTextStyle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -26,44 +20,27 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.changedToDown
-import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.text.TextMeasurer
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.unit.dp
-import com.joeybasile.composewysiwyg.events.DocumentEvent
 import com.joeybasile.composewysiwyg.model.DocumentState
 import com.joeybasile.composewysiwyg.util.handleDocKeyEvent
-import kotlin.math.sqrt
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
-import com.joeybasile.composewysiwyg.model.Block
-import com.joeybasile.composewysiwyg.model.Field
-import com.joeybasile.composewysiwyg.model.aprocessTFVUpdate
+import com.joeybasile.composewysiwyg.model.document.Block
+import com.joeybasile.composewysiwyg.model.document.Field
 import com.joeybasile.composewysiwyg.model.bprocessTFVUpdate
 import com.joeybasile.composewysiwyg.model.handleFocusChange
 import com.joeybasile.composewysiwyg.model.handleOnTextLayout
-import com.joeybasile.composewysiwyg.model.handleOnValueChange
-import com.joeybasile.composewysiwyg.model.normalise
-import com.joeybasile.composewysiwyg.model.processTFVUpdate
+import com.joeybasile.composewysiwyg.model.document.normalise
 import com.joeybasile.composewysiwyg.model.updateBlockCoords
 import com.joeybasile.composewysiwyg.model.updateGlobalCaretPosition
 
@@ -165,6 +142,7 @@ private fun Field(
                         )
                     is Block.ImageBlock -> ImageBlockView(
                         block,
+                        fieldId = field.id,
                         state,
                         modifier
                     )
@@ -242,6 +220,7 @@ private fun TextBlock(
 }
 @Composable
 fun ImageBlockView(block: Block.ImageBlock,
+                   fieldId: String,
                    state: DocumentState,
                    modifier: Modifier = Modifier) {
 
@@ -260,7 +239,9 @@ fun ImageBlockView(block: Block.ImageBlock,
         painter = painter,
         contentDescription = "inline image",
         modifier = modifier
-            //.width(block.width.dp)
+            .onGloballyPositioned { layoutCoordinates ->
+                state.updateBlockCoords(fieldId, block, layoutCoordinates)
+            }
             .pointerInput(Unit) {
                 // enable selection-start or drag-to-resize later
             }
@@ -311,15 +292,6 @@ private fun DelimiterBlock(
     when (block.kind) {
         Block.DelimiterBlock.Kind.NewLine -> {
          Text(modifier = modifier, text = "new line")
-            /*
-            Spacer(
-                Modifier
-                    .fillMaxWidth()
-                    .height(0.dp)
-                   // .background(color = Color.Blue)
-            )
-
-             */
         }
         Block.DelimiterBlock.Kind.Tab -> TODO()
     }

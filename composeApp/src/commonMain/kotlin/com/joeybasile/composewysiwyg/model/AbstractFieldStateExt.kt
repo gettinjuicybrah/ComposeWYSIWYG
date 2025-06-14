@@ -1,7 +1,7 @@
 package com.joeybasile.composewysiwyg.model
-
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.focus.FocusRequester
@@ -16,12 +16,23 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Constraints
 import com.joeybasile.composewysiwyg.model.caret.GlobalCaret
+import com.joeybasile.composewysiwyg.model.document.Block
+import com.joeybasile.composewysiwyg.model.document.Field
+import com.joeybasile.composewysiwyg.model.document.LocalFieldForMutation
+import com.joeybasile.composewysiwyg.model.document.LocalTextBlockForMutation
+import com.joeybasile.composewysiwyg.model.document.Pos
+import com.joeybasile.composewysiwyg.model.document.getLocGlobalFieldOffsetForABlock
+import com.joeybasile.composewysiwyg.model.document.measure
+import com.joeybasile.composewysiwyg.model.document.normalise
+import com.joeybasile.composewysiwyg.model.document.normalizeBlockList
 import com.joeybasile.composewysiwyg.model.linewrap.genericPullDown
-import com.joeybasile.composewysiwyg.model.linewrap.getLocGlobalFieldOffsetForABlock
 import com.joeybasile.composewysiwyg.model.linewrap.splitTextBlock
 import com.joeybasile.composewysiwyg.model.linewrap.totalLength
+import com.joeybasile.composewysiwyg.model.selection.GlobalSelectionCaretState
+import com.joeybasile.composewysiwyg.model.selection.rebuildSelectionFromAnchorAndFocus
+import com.joeybasile.composewysiwyg.model.selection.setAnchorCaret
+import com.joeybasile.composewysiwyg.model.selection.setFocusCaret
 import com.joeybasile.composewysiwyg.util.deleteCharBeforeCaretOffset
-import com.joeybasile.composewysiwyg.util.sliceRange
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -200,9 +211,9 @@ fun DocumentState.onBackSpace() {
         (!isCaretAtOriginOfField() && !doesFieldHaveNL() && !isFieldLast(globalCaret.value.fieldId))
 
     val requirePullup: Boolean = pullupCaseA || pullupCaseB
-    println(" selection state is active: ${selectionState.isActive}")
+    println(" selection state is active: ${globalSelectionState.isActive}")
     //Right now, only case is for inactive selection.
-    if (!selectionState.isActive) {
+    if (!globalSelectionState.isActive) {
         println("require pullup: ${requirePullup}")
         //This implies that the offset is > 0 (and of course witin a textblock) and the field has a newline block delimiter at the end, implying that
         //any potential fields below would not be pulled up, because the newline delimiter block is 'preventing' such.
@@ -888,7 +899,7 @@ fun DocumentState.handleOnTextLayout(fieldId: String, blockId: String, result: T
         it is Block.TextBlock && it.id == blockId
 
     }
-    println("current field index: ${fields.indexOfFirst { it.id == fieldId }}")
+    println("current field index: $fid")
     println("current block uuid: ${blockId}")
     println("size of block list in field: ${fields[fid].blocks.size}")
     for(blk in fields[fid].blocks){
@@ -1443,7 +1454,7 @@ fun DocumentState.handleOnValueChange(
  */
 fun DocumentState.updateBlockCoords(
     fieldId: String,
-    block: Block.TextBlock,
+    block: Block,
     newCoordinates: LayoutCoordinates
 ) {
     val fid = fields.indexOfFirst {
@@ -1451,7 +1462,7 @@ fun DocumentState.updateBlockCoords(
     }
     val blocksList = fields[fid].blocks
     val bid = fields[fid].blocks.indexOfFirst {
-        it is Block.TextBlock && it.id == block.id
+        it.id == block.id
     }
 
     require(fid > -1) { "field doesn't exist" }
@@ -1459,11 +1470,16 @@ fun DocumentState.updateBlockCoords(
     require(bid > -1) { "block doesn't exist" }
 
     //val updatedTextBlock = block.copy(layoutCoordinates = newCoordinates)
-    val updatedTextBlock = blocksList[bid] as Block.TextBlock
-    //    This will trigger Compose to recompose anything reading `fields[fid].blocks`
-    blocksList[bid] = updatedTextBlock.copy(layoutCoordinates = newCoordinates)
-    // For debugging:
-    // println("Updated coordinates for Field $fieldId, Block $blockId: ${newCoordinates.size}, ${newCoordinates.positionInRoot()}")
+    if(block is Block.TextBlock) {
+        val updatedTextBlock = blocksList[bid] as Block.TextBlock
+        //    This will trigger Compose to recompose anything reading `fields[fid].blocks`
+        blocksList[bid] = updatedTextBlock.copy(layoutCoordinates = newCoordinates)
+    }
+    else if (block is Block.ImageBlock) {
+        val updatedImageBlock = blocksList[bid] as Block.ImageBlock
+        //    This will trigger Compose to recompose anything reading `fields[fid].blocks`
+        blocksList[bid] = updatedImageBlock.copy(layoutCoordinates = newCoordinates)
+    }
 
     if (globalCaret.value.blockId == block.id) updateGlobalCaretPosition()
 
