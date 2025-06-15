@@ -786,17 +786,16 @@ fun DocumentState.measureLine(
 
 
 fun DocumentState.updateGlobalCaretPosition() {
-    val caret = globalCaret.value
-    require(caret.fieldId != null)
-    require(caret.blockId != null)
-    val fid = fields.indexOfFirst { it.id == caret.fieldId }
-    require(fid >= 0) { "Field doesn't exist (id = ${caret.fieldId})" }
+    require(globalCaret.value.fieldId != null)
+    require(globalCaret.value.blockId != null)
+    val fid = fields.indexOfFirst { it.id == globalCaret.value.fieldId }
+    require(fid >= 0) { "Field doesn't exist (id = ${globalCaret.value.fieldId})" }
 
     val blocksList = fields[fid].blocks
 
     // Find the TextBlock index
-    val bid = blocksList.indexOfFirst { it is Block.TextBlock && it.id == caret.blockId }
-    require(bid >= 0) { "Block doesn't exist (id = ${caret.blockId})" }
+    val bid = blocksList.indexOfFirst { it is Block.TextBlock && it.id == globalCaret.value.blockId }
+    require(bid >= 0) { "Block doesn't exist (id = ${globalCaret.value.blockId})" }
 
     val field = fields[fid]
 
@@ -808,7 +807,7 @@ fun DocumentState.updateGlobalCaretPosition() {
     val layoutResult = block.textLayoutResult ?: return
     val localOffset =
         layoutResult.getCursorRect(
-            caret.offsetInBlock.coerceIn(
+            globalCaret.value.offsetInBlock.coerceIn(
                 0,
                 layoutResult.layoutInput.text.length
             )
@@ -821,7 +820,7 @@ fun DocumentState.updateGlobalCaretPosition() {
     val height = layoutResult.getLineBottom(0) - layoutResult.getLineTop(0)
 
     // Update caret state with calculated values
-    globalCaret.value = caret.copy(
+    globalCaret.value = globalCaret.value.copy(
         globalPosition = globalOffset,
         height = height.coerceAtLeast(16f)
     )
@@ -830,20 +829,20 @@ fun DocumentState.updateGlobalCaretPosition() {
 
 fun DocumentState.onGlobalCaretMoved() {
     updateGlobalCaretPosition()
-    val caret = globalCaret.value
+
 
     // Find the field index
-    val fid = fields.indexOfFirst { it.id == caret.fieldId }
-    require(fid >= 0) { "Field doesn't exist (id = ${caret.fieldId})" }
+    val fid = fields.indexOfFirst { it.id == globalCaret.value.fieldId }
+    require(fid >= 0) { "Field doesn't exist (id = ${globalCaret.value.fieldId})" }
 
     val blocksList = fields[fid].blocks
 
     // Find the TextBlock index
-    val bid = blocksList.indexOfFirst { it is Block.TextBlock && it.id == caret.blockId }
-    require(bid >= 0) { "Block doesn't exist (id = ${caret.blockId})" }
+    val bid = blocksList.indexOfFirst { it is Block.TextBlock && it.id == globalCaret.value.blockId }
+    require(bid >= 0) { "Block doesn't exist (id = ${globalCaret.value.blockId})" }
 
     // Update focus to this block
-    updateFocusedBlock(caret.blockId)
+    updateFocusedBlock(globalCaret.value.blockId)
 
     // Safely cast to TextBlock
     val textBlock = blocksList[bid] as? Block.TextBlock
@@ -851,7 +850,7 @@ fun DocumentState.onGlobalCaretMoved() {
     if (currentTFV != null) {
         // Create a new TextFieldValue with the caret position as both selection start and end
         val newTFV = currentTFV.copy(
-            selection = TextRange(caret.offsetInBlock, caret.offsetInBlock)
+            selection = TextRange(globalCaret.value.offsetInBlock, globalCaret.value.offsetInBlock)
         )
 
         // Replace the old TextBlock with an updated one
@@ -978,7 +977,7 @@ fun DocumentState.bprocessTFVUpdate(
         globalCaret.value = globalCaret.value.copy(
             fieldId = fieldId,
             blockId = block.id,
-            offsetInBlock = newValue.selection.start
+            offsetInBlock = newTFV.selection.start
         )
         // immediately recompute the global caret position on screen
         onGlobalCaretMoved()

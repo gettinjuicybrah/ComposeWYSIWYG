@@ -440,9 +440,25 @@ private fun DocumentState.getFieldSelectionRect(
     endOffsetInBlock: Int,
     rootCoords: LayoutCoordinates
 ): Rect? {
-    /* ---------- Helpers -------------------------------------------------- */
-
     val field = fields.firstOrNull { it.id == fieldId } ?: return null
+
+    // Find the highest point (minimum Y) and lowest point (maximum Y) of all blocks
+    var minTop = Float.MAX_VALUE
+    var maxBottom = Float.MIN_VALUE
+
+    for (blk in field.blocks) {
+        blk.layoutCoordinates?.let { coords ->
+            val topLeft = rootCoords.localPositionOf(coords, Offset.Zero)
+            val blockTop = topLeft.y
+            val blockBottom = topLeft.y + coords.size.height
+
+            minTop = minOf(minTop, blockTop)
+            maxBottom = maxOf(maxBottom, blockBottom)
+        }
+    }
+
+    // If we couldn't find any positioned blocks, fall back to individual caret heights
+    val useFieldBounds = minTop != Float.MAX_VALUE && maxBottom != Float.MIN_VALUE
 
     /**   Convert a caret *inside* a block into a global Rect (1 dp wide). */
     fun caretRect(block: Block, offset: Int): Rect? {
@@ -458,29 +474,45 @@ private fun DocumentState.getFieldSelectionRect(
                     Offset(local.left, local.top)
                 )
 
-                // keep original width / height from TextLayout – produces a slim caret
-                Rect(global, local.size)
+                // Use field bounds for height if available, otherwise use caret height
+                val height = if (useFieldBounds) {
+                    maxBottom - minTop
+                } else {
+                    local.size.height
+                }
+
+                val top = if (useFieldBounds) minTop else global.y
+
+                Rect(
+                    left = global.x,
+                    top = top,
+                    right = global.x + local.size.width,
+                    bottom = top + height
+                )
             }
 
-            /* A caret is never *inside* an ImageBlock or DelimiterBlock,
-               but the caller may still ask for offset 0 ( “before” ) or 1 ( “after” ).
-               We therefore expose a 1-px-wide vertical bar at the requested edge so
-               that the selection engine can still draw something sensible.          */
             is Block.ImageBlock, is Block.DelimiterBlock -> {
                 val coords  = block.layoutCoordinates ?: return null
                 val origin  = rootCoords.localPositionOf(coords, Offset.Zero)
-                val size    = Size(
-                    /* 1 dp caret-width  */ 1f,
+
+                // Use field bounds for height if available, otherwise use block height
+                val height = if (useFieldBounds) {
+                    maxBottom - minTop
+                } else {
                     coords.size.height.toFloat()
-                )
+                }
+
+                val top = if (useFieldBounds) minTop else origin.y
+
+                val size = Size(1f, height) // 1 dp caret-width
 
                 // pick left or right edge depending on offset
                 val dx = if (offset <= 0) 0f else coords.size.width.toFloat()
                 Rect(
                     left   = origin.x + dx,
-                    top    = origin.y,
+                    top    = top,
                     right  = origin.x + dx + size.width,
-                    bottom = origin.y + size.height
+                    bottom = top + size.height
                 )
             }
         }
@@ -491,7 +523,7 @@ private fun DocumentState.getFieldSelectionRect(
     val startBlock = field.blocks.firstOrNull { it.id == startBlockId } ?: return null
     val endBlock   = field.blocks.firstOrNull { it.id == endBlockId   } ?: return null
 
-    // single-caret case ────────────────────────────────────────────────────
+    // single-caret case
     if (startBlockId == endBlockId && startOffsetInBlock == endOffsetInBlock) {
         return caretRect(startBlock, startOffsetInBlock)
     }
@@ -507,41 +539,6 @@ private fun DocumentState.getFieldSelectionRect(
     val bottom = max(startRect.bottom, endRect.bottom)
 
     return Rect(left, top, right, bottom)
-    /*
-    val fIndx = getFieldIndex(fieldId)
-    val startBlkIndx
-    val endBlkIndx
-    val layoutResult = field.textLayoutResult ?: return null
-    val fieldCoords = field.layoutCoordinates ?: return null
-
-    val safeStart = startOffset.coerceIn(0, layoutResult.layoutInput.text.length)
-    val safeEnd = endOffset.coerceIn(0, layoutResult.layoutInput.text.length)
-
-    if (safeStart == safeEnd) {
-        val cursorRect = layoutResult.getCursorRect(safeStart)
-        val globalTopLeft =
-            boxCoords.localPositionOf(fieldCoords, Offset(cursorRect.left, cursorRect.top))
-        return Rect(globalTopLeft, cursorRect.size)
-    }
-
-    val startBounds = layoutResult.getCursorRect(safeStart)
-    val endBounds = layoutResult.getCursorRect(safeEnd)
-
-    val localLeft = minOf(startBounds.left, endBounds.left)
-    val localRight = maxOf(startBounds.right, endBounds.right)
-    val localTop = minOf(startBounds.top, endBounds.top)
-    val localBottom = maxOf(startBounds.bottom, endBounds.bottom)
-
-    val globalTopLeft = boxCoords.localPositionOf(fieldCoords, Offset(localLeft, localTop))
-    val globalBottomRight = boxCoords.localPositionOf(fieldCoords, Offset(localRight, localBottom))
-
-    return Rect(
-        left = globalTopLeft.x,
-        top = globalTopLeft.y,
-        right = globalBottomRight.x,
-        bottom = globalBottomRight.y
-    )
-     */
 }
 fun DocumentState.finishSelection() {
     globalSelectionState = globalSelectionState.copy(anchor = null, focus = null, segments = emptyList())

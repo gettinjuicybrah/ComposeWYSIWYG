@@ -10,7 +10,7 @@ fun DocumentRoot(){
     val state: DocumentState = rememberDocumentState()
     Column {
         //DocumentToolbar(state, rememberLineMeasurer())
-        Document(state)
-        //DocumentWithSelectionOverlay(state)
+        //Document(state)
+        DocumentWithSelectionOverlay(state)
     }
 }

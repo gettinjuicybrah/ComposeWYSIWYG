@@ -26,6 +26,7 @@ import com.joeybasile.composewysiwyg.model.DocumentState
 import com.joeybasile.composewysiwyg.util.handleDocKeyEvent
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.Text
@@ -35,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.input.pointer.PointerEventPass
 import com.joeybasile.composewysiwyg.model.document.Block
 import com.joeybasile.composewysiwyg.model.document.Field
 import com.joeybasile.composewysiwyg.model.bprocessTFVUpdate
@@ -43,9 +45,13 @@ import com.joeybasile.composewysiwyg.model.handleOnTextLayout
 import com.joeybasile.composewysiwyg.model.document.normalise
 import com.joeybasile.composewysiwyg.model.updateBlockCoords
 import com.joeybasile.composewysiwyg.model.updateGlobalCaretPosition
-
+import androidx.compose.ui.input.pointer.changedToUp
 import coil3.compose.*
 import com.joeybasile.composewysiwyg.model.onGlobalCaretMoved
+import com.joeybasile.composewysiwyg.model.selection.finishSelection
+import com.joeybasile.composewysiwyg.model.selection.startDragSelection
+import com.joeybasile.composewysiwyg.model.selection.updateDragSelection
+import kotlin.math.sqrt
 
 /**
  * Renders the whole document.  Each [Field] becomes one item in the vertical list.
@@ -184,6 +190,60 @@ private fun TextBlock(
 
                 modifier = Modifier
                     .background(color = Color.LightGray)
+                    /* ────────────────────────────────────────────
+             *  TAP   → clear selection, move caret
+             *  DRAG  → live-update green selection rects
+             * ──────────────────────────────────────────── */
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+
+                                /* ── 0. Wait for first finger/mouse down ––––––– */
+                                val down = awaitFirstDown(requireUnconsumed = false)
+
+                                /* Clear any old selection immediately on tap     */
+                                state.finishSelection()
+
+                                /* Convert the DOWN position to *root* coordinates */
+                                val blockCoords = block.layoutCoordinates ?: continue
+                                val rootCoords  = state.rootReferenceCoordinates
+                                    .value.coordinates ?: continue
+                                val startGlobal = rootCoords.localPositionOf(
+                                    blockCoords, down.position
+                                )
+
+                                var selectionTriggered = false
+
+                                /* ── 1. Track movement until all pointers up ––– */
+                                while (true) {
+                                    val ev = awaitPointerEvent(PointerEventPass.Initial)
+                                    if (ev.changes.all { it.changedToUp() }) {
+                                        println("Pointer released, breaking out of movement loop")
+                                        break
+                                    }
+
+                                    val curGlobal = rootCoords.localPositionOf(
+                                        blockCoords, ev.changes.first().position
+                                    )
+
+                                    /* threshold ≈ 1 px to avoid spurious drags   */
+                                    val dx = curGlobal.x - startGlobal.x
+                                    val dy = curGlobal.y - startGlobal.y
+                                    val dist2 = sqrt(dx*dx + dy*dy)
+
+                                    if (!selectionTriggered && dist2 > 1f) {
+                                        state.startDragSelection(startGlobal)
+                                        selectionTriggered = true
+                                    }
+                                    if (selectionTriggered) {
+                                        state.updateDragSelection(curGlobal)
+                                    }
+
+                                    ev.changes.forEach { it.consume() }
+                                }
+                            }
+                        }
+                    }
                     .onGloballyPositioned { layoutCoordinates ->
                         state.updateBlockCoords(fieldId, block, layoutCoordinates)
                     }
@@ -195,6 +255,7 @@ private fun TextBlock(
                     .onFocusChanged {
                         if (it.isFocused) {
                             isFocused = true
+                            state.finishSelection()
                             state.handleFocusChange(fieldId, block.id)
                         } else {
                             isFocused = false

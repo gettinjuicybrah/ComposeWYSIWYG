@@ -29,13 +29,12 @@ fun DocumentState.insertImageAtCaret(bytes: ByteArray, mime: String) {
         naturalHeight = 510
     )
 
-
     imageStore[payload.id] = payload
 
     val imgBlock = Block.ImageBlock(
         id = Uuid.random().toString(),
         payloadId = payload.id,
-        width = payload.naturalWidth,            // for now 1:1 pixels
+        width = payload.naturalWidth, // for now 1:1 pixels
         focusRequester = FocusRequester()
     )
     val emptyTB = emptyTextBlock()
@@ -46,10 +45,12 @@ fun DocumentState.insertImageAtCaret(bytes: ByteArray, mime: String) {
         addAll(blockIdx, listOf(leftTB, imgBlock, emptyTB, rightTB))
     }
     fields[fieldIdx] = fields[fieldIdx].normalise()
+    val imgBlockIndx = fields[fieldIdx].blocks.indexOfFirst { it.id == imgBlock.id }
+    val indxAfterImg = imgBlockIndx + 1
+    val blockAfterImg = fields[fieldIdx].blocks[indxAfterImg]
 
-    /* 4 ─ move caret to emptyTB@offset0 */
     globalCaret.value = caret.copy(
-        blockId = emptyTB.id,
+        blockId = blockAfterImg.id,
         offsetInBlock = 0
     )
     onGlobalCaretMoved()
