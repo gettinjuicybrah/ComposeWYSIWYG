@@ -8,6 +8,30 @@ import com.joeybasile.composewysiwyg.model.*
 import com.joeybasile.composewysiwyg.model.getFieldById
 
 import kotlin.math.abs
+/*
+Call syncCaret() immediately after:
+
+replacing elements inside Field.blocks
+
+inserting/removing blocks
+
+any Field.normalise() that might merge TextBlocks
+
+tryPullUp()’s fields[currentFieldIdx] = …
+
+That single guard eliminates every “offset N out of bounds” panic.
+ */
+fun DocumentState.syncCaret() {
+    val caret = globalCaret.value
+    val field  = fields.find { it.id == caret.fieldId } ?: return
+    val block  = field.blocks.find { it.id == caret.blockId } as? Block.TextBlock ?: return
+
+    val clampedOffset = caret.offsetInBlock.coerceIn(0, block.length)
+    if (clampedOffset != caret.offsetInBlock) {
+        globalCaret.value = caret.copy(offsetInBlock = clampedOffset)
+    }
+    updateGlobalCaretPosition()      // <- recompute screen coords
+}
 
 /**
  * Move one “character” (or block) to the right.

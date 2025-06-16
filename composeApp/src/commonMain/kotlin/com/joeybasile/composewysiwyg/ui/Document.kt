@@ -46,6 +46,7 @@ import com.joeybasile.composewysiwyg.model.document.normalise
 import com.joeybasile.composewysiwyg.model.updateBlockCoords
 import com.joeybasile.composewysiwyg.model.updateGlobalCaretPosition
 import androidx.compose.ui.input.pointer.changedToUp
+import androidx.compose.ui.layout.LayoutCoordinates
 import coil3.compose.*
 import com.joeybasile.composewysiwyg.model.onGlobalCaretMoved
 import com.joeybasile.composewysiwyg.model.selection.finishSelection
@@ -74,7 +75,7 @@ fun Document(
             }
             .drawWithContent {
                 drawContent()
-                state.onGlobalCaretMoved()
+                //state.onGlobalCaretMoved()
                 val caret = state.globalCaret.value
                 if (caret.globalPosition != Offset.Unspecified && caret.isVisible) {
                     //println("-------------------------------------------------------------------------------")
@@ -135,7 +136,7 @@ private fun Field(
     modifier: Modifier = Modifier,
 ) {
     Row(verticalAlignment = Alignment.Bottom) {
-        field.normalise()
+
         field.blocks.forEach { block ->
             key(block.id) {
                 when (block) {
@@ -170,7 +171,9 @@ private fun TextBlock(
     focusedBlock: MutableState<String>
 ) {
     var isFocused by remember { mutableStateOf(false) }
-
+    //moved the state update coords out of the onGloballyPositioned because compose
+    //was still measuring and dispatching layout callbacks, which could reorder the snapshot‐state lists, and the very next onGloballyPositioned may fire for the old block instance—one that’s already been swapped out—so its id isn’t found.
+    var coords by remember { mutableStateOf<LayoutCoordinates?>(null) }
             BasicTextField(
                 value = block.textFieldValue,
                 //value = block.value,
@@ -182,10 +185,7 @@ private fun TextBlock(
                     println("")
                 },
                 onTextLayout = {
-                    (state.fields[state.fields.indexOfFirst { it.id == fieldId }].normalise())
                     state.handleOnTextLayout(fieldId, block.id, it)
-                    //normalize the field whenever a layout result occurs.
-
                 },
 
                 modifier = Modifier
@@ -205,6 +205,8 @@ private fun TextBlock(
                                 state.finishSelection()
 
                                 /* Convert the DOWN position to *root* coordinates */
+                                if(block.layoutCoordinates == null){println("they null for ${block}")}
+                                if(state.rootReferenceCoordinates.value.coordinates == null){println("Root ref is null fo sho")}
                                 val blockCoords = block.layoutCoordinates ?: continue
                                 val rootCoords  = state.rootReferenceCoordinates
                                     .value.coordinates ?: continue
@@ -244,9 +246,7 @@ private fun TextBlock(
                             }
                         }
                     }
-                    .onGloballyPositioned { layoutCoordinates ->
-                        state.updateBlockCoords(fieldId, block, layoutCoordinates)
-                    }
+                    .onGloballyPositioned { coords = it }
                     .onPreviewKeyEvent { event ->
                         onKeyEvent(event, block.id)
                     }
@@ -264,14 +264,24 @@ private fun TextBlock(
                 cursorBrush = SolidColor(Color.Blue),
                 singleLine = true
             )
-
+    LaunchedEffect(coords) {
+        coords?.let {
+            // primitive id so never pass a stale object
+            state.updateBlockCoords(fieldId, block.id, it)
+        }
+    }
     LaunchedEffect(focusedBlock.value) {
         if (focusedBlock.value == block.id) {
             try {
                 println("FOCUS REQUESTED IN TextBlock ${block.textFieldValue.text}")
                 block.focusRequester.requestFocus()
-            //state.handleFocusChange(fieldId, block.id)
+                println("calling onGlobalCaretMoved()")
+                println("calling onGlobalCaretMoved()")
+                println("calling onGlobalCaretMoved()")
                 state.onGlobalCaretMoved()
+                println("leaving onGlobalCaretMoved()")
+                println("leaving onGlobalCaretMoved()")
+                println("leaving onGlobalCaretMoved()")
                 //state.updateGlobalCaretPosition()
             } catch (e: Exception) {
                 println("CATACHY ")
@@ -301,7 +311,7 @@ fun ImageBlockView(block: Block.ImageBlock,
         contentDescription = "inline image",
         modifier = modifier
             .onGloballyPositioned { layoutCoordinates ->
-                state.updateBlockCoords(fieldId, block, layoutCoordinates)
+                state.updateBlockCoords(fieldId, block.id, layoutCoordinates)
             }
             .pointerInput(Unit) {
                 // enable selection-start or drag-to-resize later
@@ -310,34 +320,7 @@ fun ImageBlockView(block: Block.ImageBlock,
             .onPreviewKeyEvent { ev -> handleDocKeyEvent(ev, state) }
     )
 }
-/** Simple bitmap render; you can swap in AsyncImage, Coil, etc. later. */
-/*
-@Composable
-private fun ImageBlock(
-    block: Block.ImageBlock,
-    onKeyEvent: (KeyEvent, String) -> Boolean,
-    focusedBlock: MutableState<String>,
-    modifier: Modifier = Modifier
-        .background(color = Color.Red)
-) {
-    var isFocused by remember { mutableStateOf(false) }
-    Text("image")
-/*
-    Image(
-        bitmap = block.bitmap,
-        contentDescription = null,
-        modifier = Modifier
-            .widthIn(max = 300.dp) // prevent over‑size images blowing up the row
-            .padding(vertical = 4.dp, horizontal = 2.dp)
-            .focusRequester(block.focusRequester)
-            .onGloballyPositioned { layoutCoordinates ->
-                onPositioned(block.id, layoutCoordinates)
-            },
-    )
 
- */
-}
-*/
 /**
  * Placeholder implementation.
  *

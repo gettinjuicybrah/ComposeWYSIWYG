@@ -228,7 +228,7 @@ class DocumentState(val scope: CoroutineScope) {
         val caretBlock = nextBlocks.first { it is Block.TextBlock } as Block.TextBlock
 
         /* ─────────── 6. Update caret + focus ────────────────────────────────────── */
-        globalCaret.value = globalCaret.value.copy(
+        globalCaret.value = caret.copy(
             fieldId = nextField.id,
             blockId = caretBlock.id,
             offsetInBlock = 0

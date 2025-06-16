@@ -1,6 +1,5 @@
 package com.joeybasile.composewysiwyg.model
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
+
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.toMutableStateList
@@ -16,22 +15,21 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Constraints
 import com.joeybasile.composewysiwyg.model.caret.GlobalCaret
+//import com.joeybasile.composewysiwyg.model.caret.syncCaret
 import com.joeybasile.composewysiwyg.model.document.Block
 import com.joeybasile.composewysiwyg.model.document.Field
 import com.joeybasile.composewysiwyg.model.document.LocalFieldForMutation
 import com.joeybasile.composewysiwyg.model.document.LocalTextBlockForMutation
 import com.joeybasile.composewysiwyg.model.document.Pos
+import com.joeybasile.composewysiwyg.model.document.concatTextBlocks
 import com.joeybasile.composewysiwyg.model.document.getLocGlobalFieldOffsetForABlock
+import com.joeybasile.composewysiwyg.model.document.lastFittingIndex
 import com.joeybasile.composewysiwyg.model.document.measure
 import com.joeybasile.composewysiwyg.model.document.normalise
 import com.joeybasile.composewysiwyg.model.document.normalizeBlockList
 import com.joeybasile.composewysiwyg.model.linewrap.genericPullDown
 import com.joeybasile.composewysiwyg.model.linewrap.splitTextBlock
 import com.joeybasile.composewysiwyg.model.linewrap.totalLength
-import com.joeybasile.composewysiwyg.model.selection.GlobalSelectionCaretState
-import com.joeybasile.composewysiwyg.model.selection.rebuildSelectionFromAnchorAndFocus
-import com.joeybasile.composewysiwyg.model.selection.setAnchorCaret
-import com.joeybasile.composewysiwyg.model.selection.setFocusCaret
 import com.joeybasile.composewysiwyg.util.deleteCharBeforeCaretOffset
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -56,8 +54,8 @@ data class BlockMeasureResult(
  * field – i.e. its offset inside the current TextBlock is 0 **and** there is no
  * earlier caret-host (TextBlock) in that field.
  */
-internal fun DocumentState.isCaretAtOriginOfField(): Boolean {
-    val caret = globalCaret.value
+internal fun DocumentState.isCaretAtOriginOfField(caret: GlobalCaret): Boolean {
+    //val caret = globalCaret.value
 
     // 1) We need an offset of 0 in the current block
     if (caret.offsetInBlock != 0) return false
@@ -82,12 +80,8 @@ internal fun DocumentState.isCaretAtOriginOfField(): Boolean {
  * `true` ⇢ the caret is **not** in the first field of the document
  * `false` ⇢ the caret is already on the topmost field or the caret is invalid
  */
-internal fun DocumentState.thereExistsAnAboveField(): Boolean {
-    // Find the index of the field that currently owns the caret
-    val idx = globalCaret.value.fieldId.let { id -> fields.indexOfFirst { it.id == id } }
-        ?: return false                      // no valid caret → no “above” field
-
-    // We have an “above” field if the current one is *not* the first (index 0)
+internal fun DocumentState.thereExistsAnAboveField(caret: GlobalCaret): Boolean {
+    val idx = fields.indexOfFirst { it.id == caret.fieldId }
     return idx > 0
 }
 
@@ -95,11 +89,8 @@ internal fun DocumentState.thereExistsAnAboveField(): Boolean {
  * Returns true when the field that currently owns the global caret
  * ends with a New-Line delimiter block.
  */
-internal fun DocumentState.doesFieldHaveNL(): Boolean {
-    // Resolve the caret’s field; return false if the caret is orphaned
-    val field = globalCaret.value.fieldId.let(::getFieldById) ?: return false
-
-    // The last block must be a DelimiterBlock of kind NewLine
+internal fun DocumentState.doesFieldHaveNL(caret: GlobalCaret): Boolean {
+    val field = getFieldById(caret.fieldId) ?: return false
     val tail = field.blocks.lastOrNull() as? Block.DelimiterBlock ?: return false
     return tail.kind == Block.DelimiterBlock.Kind.NewLine
 }
@@ -141,39 +132,59 @@ private fun DocumentState.tryPullUp(rootFieldIdx: Int) {
     val sty = defaultTextStyle
     var currentFieldIdx = rootFieldIdx
     var loopCount = 0
+    //Because there's nothing below fields.lastIndex to pull up into fields.lastIndex... it's the last index.
     while (currentFieldIdx < fields.lastIndex) {
-        println("loop # $loopCount within the loop in attemptPullUp()")
+        println("loop # $loopCount within the loop in tryPullUp()")
         loopCount++
         val topField = fields[currentFieldIdx]
         val botField = fields[currentFieldIdx + 1]
 
         val tempBlocks = topField.blocks.toMutableList()
         println("TEMP BLOCKS BEFORER APPENDING BELOW: $tempBlocks")
+        println("BOTTOM FIELD BLOKC AS SNAPSHOT: ${botField.blocks}")
+        println("BOTTOM FIELD BLOCKS as mutable list: ${botField.blocks.toMutableList()}")
+
         tempBlocks.addAll(botField.blocks)
         println("tempBlocks AFTER APPENDING BELOW, AND before normalizing: $tempBlocks")
         normalizeBlockList(tempBlocks)
         println("after normalizing: $tempBlocks")
         // Measure the hypothetical merged line
         // val measurement = measureLine(tempBlocks, maxWidth, tm, sty)
-        val measurement = measureField(tempBlocks, maxWidth, tm, sty)
+        val measurement = measureField(tempBlocks, getMaxWidth(), tm, sty)
         if (!measurement.overflow) {
-            if (fields[currentFieldIdx].blocks == tempBlocks) {
-                fields[currentFieldIdx] = fields[currentFieldIdx].normalise()
+            val currentField = fields[currentFieldIdx]
+            if (currentField.blocks == tempBlocks) {
+                //val updated = currentField.normalise()
+                fields[currentFieldIdx] = currentField.normalise()
+                //syncCaret()
                 println("Then leave, what the hell is the point anymore")
                 break
             }
             //clear the current field.
-            fields[currentFieldIdx].blocks.clear()
+            currentField.blocks.clear()
             //set it to the temp field which didn't overflow.
-            fields[currentFieldIdx].blocks.addAll(tempBlocks)
+            currentField.blocks.addAll(tempBlocks)
             //MUST FOLLOW PROTCOL BEEP BOOP.
-            fields[currentFieldIdx].normalise()
+            currentField.normalise()
+            //syncCaret()
             //remove the below.
             fields.removeAt(currentFieldIdx + 1)
+
             break
         } else {
             //else, we want to split at the OF.
-            val (left, right) = splitBlockListAt(tempBlocks, measurement.overflowPos!!)
+            // val (left, right) = splitBlockListAt(tempBlocks, measurement.overflowPos!!)
+            val (left, right) = measurement.overflowPos?.let {
+                splitFieldAt(Field("", tempBlocks.toMutableStateList()),
+                    it
+                )
+            }
+                ?:return
+            println("tempblocks: $tempBlocks")
+            println("RESULT OF SPLITTING TEMPBLOCK LIST:")
+            println("LEFT: $left")
+            println("RIGHT: $right")
+
             if (left == tempBlocks) {
                 println("NO CHANGE. LEAVING.")
                 break
@@ -188,6 +199,7 @@ private fun DocumentState.tryPullUp(rootFieldIdx: Int) {
                 fields[currentFieldIdx + 1].normalise()
                 //increment to continue.
                 currentFieldIdx++
+                //syncCaret()
             }
         }
     }
@@ -203,98 +215,106 @@ Makes determination on whether or not on calling attemptPullup() for iterative p
 
  */
 fun DocumentState.onBackSpace() {
-
+    val caret = globalCaret.value
+    val isCaretOriginOfField = isCaretAtOriginOfField(caret)
     //This first case would be beginning our pullup by having the root field be the above
-    val pullupCaseA: Boolean = (isCaretAtOriginOfField() && thereExistsAnAboveField())
+    val pullupCaseA: Boolean = (isCaretOriginOfField && thereExistsAnAboveField(caret))
     //this other case would be beginning our pullup by have the root be the CURRENT field.
     val pullupCaseB: Boolean =
-        (!isCaretAtOriginOfField() && !doesFieldHaveNL() && !isFieldLast(globalCaret.value.fieldId))
+        (!isCaretOriginOfField && !doesFieldHaveNL(caret) && !isFieldLast(caret.fieldId))
 
     val requirePullup: Boolean = pullupCaseA || pullupCaseB
-    println(" selection state is active: ${globalSelectionState.isActive}")
+    val globalSelectionStateIsActive: Boolean = globalSelectionState.isActive
+    println(" selection state is active: ${globalSelectionStateIsActive}")
     //Right now, only case is for inactive selection.
-    if (!globalSelectionState.isActive) {
+    if (!globalSelectionStateIsActive) {
         println("require pullup: ${requirePullup}")
         //This implies that the offset is > 0 (and of course witin a textblock) and the field has a newline block delimiter at the end, implying that
         //any potential fields below would not be pulled up, because the newline delimiter block is 'preventing' such.
         if (!requirePullup) {
             println("----------------------------NOT requirePullup()")
-            val caret = globalCaret.value
             val fieldIdx = fields.indexOfFirst { it.id == caret.fieldId }
-            if (fieldIdx < 0) return            // nothing sane to do
+            if (fieldIdx < 0) {
+                println("fieldIdx < 0, RETURNING FROM BACKSPACE")
+                return
+            }            // nothing sane to do
             val blocks = fields[fieldIdx].blocks
 
             val curIdx = blocks.indexOfFirst { it.id == caret.blockId }
-            if (curIdx < 0){
+            if (curIdx < 0) {
                 println("CUR INDX <0, RETURNING FROM BACKSPACE")
-                return }
-
-            if(!(blocks[curIdx] is Block.TextBlock)) {
+                return
+            }
+            if (curIdx == 0 && fieldIdx == 0 && blocks[curIdx].length == 0) return   // top-left corner of the doc
+            if (!(blocks[curIdx] is Block.TextBlock)) {
                 println("${blocks[curIdx]}")
                 println("current block is NOT a text block. RETURNING.")
                 return
             }   // P-5 guarantees this cast
-            else{
+            else {
                 val curTB = blocks[curIdx] as Block.TextBlock
-            /* ───────────── 1) ordinary character deletion ───────────── */
-            if (caret.offsetInBlock > 0) {
-                val oldAS = curTB.textFieldValue.annotatedString
-                val newAS = buildAnnotatedString {
-                    append(oldAS.subSequence(0, caret.offsetInBlock))
-                    append(oldAS.subSequence(caret.offsetInBlock, oldAS.length))
+                /* ───────────── 1) ordinary character deletion ───────────── */
+                if (caret.offsetInBlock > 0) {
+                    println("---------------------------- caret.offsetInBlock > 0")
+                    val oldAS = curTB.textFieldValue.annotatedString
+                    val safeOffset = caret.offsetInBlock.coerceIn(0, oldAS.length)
+                    val newAS = oldAS.deleteCharBeforeCaretOffset(safeOffset)
+
+
+                    val newTFV = curTB.textFieldValue.copy(
+                        annotatedString = newAS,
+                        selection = TextRange(caret.offsetInBlock - 1)
+                    )
+                    blocks[curIdx] = curTB.copy(textFieldValue = newTFV)
+
+                    globalCaret.value = caret.copy(offsetInBlock = caret.offsetInBlock - 1)
+                    onGlobalCaretMoved()
+                    return
                 }
-                val newTFV = curTB.textFieldValue.copy(
-                    annotatedString = newAS,
-                    selection = TextRange(caret.offsetInBlock - 1)
-                )
-                blocks[curIdx] = curTB.copy(textFieldValue = newTFV)
-
-                globalCaret.value = caret.copy(offsetInBlock = caret.offsetInBlock - 1)
-                onGlobalCaretMoved()
-                return
-            }}
+            }
             /*
-                        /* ───────────── 2) traversal-unit deletion (offset == 0) ───────────── */
-                        if (curIdx == 0) return                         // nothing to the left
-                        val prev = blocks[curIdx - 1]
+                                    /* ───────────── 2) traversal-unit deletion (offset == 0) ───────────── */
+                                    if (curIdx == 0) return                         // nothing to the left
+                                    val prev = blocks[curIdx - 1]
 
-                        // Currently we only expect ImageBlock or (in the future) other non-text units
-                        if (prev is Block.ImageBlock || prev is Block.DelimiterBlock) {
-                            blocks.removeAt(curIdx - 1)
+                                    // Currently we only expect ImageBlock or (in the future) other non-text units
+                                    if (prev is Block.ImageBlock || prev is Block.DelimiterBlock) {
+                                        blocks.removeAt(curIdx - 1)
 
-                            // After removal we may have TB | TB   →  merge to honour P-3.
-                            var newCurIdx = curIdx - 1                       // caret-host may have shifted left
-                            if (newCurIdx > 0 &&
-                                blocks[newCurIdx - 1] is Block.TextBlock &&
-                                blocks[newCurIdx]     is Block.TextBlock) {
+                                        // After removal we may have TB | TB   →  merge to honour P-3.
+                                        var newCurIdx = curIdx - 1                       // caret-host may have shifted left
+                                        if (newCurIdx > 0 &&
+                                            blocks[newCurIdx - 1] is Block.TextBlock &&
+                                            blocks[newCurIdx]     is Block.TextBlock) {
 
-                                val left  = blocks[newCurIdx - 1] as Block.TextBlock
-                                val right = blocks[newCurIdx]     as Block.TextBlock
-                                val merged = concatTextBlocks(left, right)
+                                            val left  = blocks[newCurIdx - 1] as Block.TextBlock
+                                            val right = blocks[newCurIdx]     as Block.TextBlock
+                                            val merged = concatTextBlocks(left, right)
 
-                                blocks[newCurIdx - 1] = merged
-                                blocks.removeAt(newCurIdx)                   // drop the old “right”
+                                            blocks[newCurIdx - 1] = merged
+                                            blocks.removeAt(newCurIdx)                   // drop the old “right”
 
-                                globalCaret.value = caret.copy(
-                                    blockId       = merged.id,
-                                    offsetInBlock = left.length              // caret now sits at join-point
-                                )
-                            } else {
-                                // caret stayed in the same (still valid) TextBlock
-                                globalCaret.value = caret
-                            }
-                            onGlobalCaretMoved()
-                        }
+                                            globalCaret.value = caret.copy(
+                                                blockId       = merged.id,
+                                                offsetInBlock = left.length              // caret now sits at join-point
+                                            )
+                                        } else {
+                                            // caret stayed in the same (still valid) TextBlock
+                                            globalCaret.value = caret
+                                        }
+                                        onGlobalCaretMoved()
+                                    }
 
-             */
+            */
+
             /* ───────────── 2) traversal-unit deletion (offset == 0) ───────────── */
             println(" BEFORE THE CHECK OF CURRENT BLK INDEX 0, PROGRAMMED TO RETURN IF SO.")
             println(" BEFORE THE CHECK OF CURRENT BLK INDEX 0, PROGRAMMED TO RETURN IF SO.")
             println(" BEFORE THE CHECK OF CURRENT BLK INDEX 0, PROGRAMMED TO RETURN IF SO.")
-            if (curIdx == 0) return                         // nothing to the left
+            //if (curIdx == 0) return                         // nothing to the left
             println("DID NOT RETURN")
-            val prev = blocks[curIdx - 1]
-
+            //val prev = if(curIdx>0)blocks[curIdx - 1] else {if(fieldIdx>0)fields[fieldIdx-1].blocks.findLast { it is Block.TextBlock } else null}
+            val prev = if (curIdx > 0) blocks[curIdx - 1] else null
 // Currently we only expect ImageBlock or (in the future) other non-text units
             if (prev is Block.ImageBlock || prev is Block.DelimiterBlock) {
                 // We need to know where the caret will land *before* normalizing.
@@ -307,10 +327,12 @@ fun DocumentState.onBackSpace() {
 
                 // Perform the deletion.
                 blocks.removeAt(curIdx - 1)
+                normalizeBlockList(blocks)
+                //syncCaret()
 
                 // Now, tell the entire field to enforce the protocol.
                 // This will handle merging, empty block creation, etc.
-                fields[fieldIdx] = fields[fieldIdx].normalise()
+                //fields[fieldIdx] = fields[fieldIdx].normalise()
 
                 // After normalization, the block IDs may have changed. We must find the
                 // new block and place the caret correctly.
@@ -342,7 +364,6 @@ fun DocumentState.onBackSpace() {
                 "pullupCaseA and pullupCaseB cannot both be true"
             }
             println("---------------------------- REQUIRE pullUp()")
-            val caret = globalCaret.value
             val currentFieldIdx = fields.indexOfFirst { it.id == caret.fieldId }
 
             /*
@@ -379,19 +400,29 @@ fun DocumentState.onBackSpace() {
                     }
                     // Case A.2: The line above ends with text. Delete the last character.
                     is Block.TextBlock -> {
+                        println()
+                        println("CASE A.2")
+                        println()
+                        println("last block: ${lastBlock}")
+                        println("last block length: ${lastBlock.length}")
+                        println("last block text: ${lastBlock.textFieldValue.text}")
                         if (lastBlock.length > 0) {
                             val newAS =
                                 lastBlock.textFieldValue.annotatedString.deleteCharBeforeCaretOffset(
                                     lastBlock.length
                                 )
-                            val newTFV = lastBlock.textFieldValue.copy(annotatedString = newAS)
+                            println("last char should be chopped: ${newAS.text}")
+                            println("last char should be chopped: ${newAS.length}")
+                            val textRangeOfAboveFieldAfterBackspace = lastBlock.length-1
+                            val newTFV = lastBlock.textFieldValue.copy(annotatedString = newAS, selection = TextRange(textRangeOfAboveFieldAfterBackspace))
                             topBlocks[topBlocks.lastIndex] = lastBlock.copy(textFieldValue = newTFV)
                             globalCaret.value = caret.copy(
                                 fieldId = topField.id,
                                 blockId = lastBlock.id,
-                                offsetInBlock = lastBlock.length - 1
+                                offsetInBlock = textRangeOfAboveFieldAfterBackspace
                             )
                         } else {
+                            println("else block in A.2")
                             // An empty TextBlock implies an Image before it (P-2). Delete both.
                             if (topBlocks.size >= 2 && topBlocks[topBlocks.lastIndex - 1] is Block.ImageBlock) {
                                 topBlocks.removeLast() // remove empty text block
@@ -481,9 +512,18 @@ fun DocumentState.splitFieldAt(
     var right: List<Block> = emptyList()
 
     if ((posBlockTypeIsText || posBlockTypeIsImage || posBlockTypeIsDelimiter) && offset == 0) {
-println("IF 1 IN SPLITFIELDAT")
+        println("IF 1 IN SPLITFIELDAT")
+        println("LINE 509 SPLITFIELDAT()")
+        println("LINE 509 SPLITFIELDAT()")
+        println("LINE 509 SPLITFIELDAT()")
+        println("LINE 509 SPLITFIELDAT()")
+        println("LINE 509 SPLITFIELDAT()")
+        println("LINE 509 SPLITFIELDAT()")
+        println("LINE 509 SPLITFIELDAT()")
+        println("LINE 509 SPLITFIELDAT()")
         left = field.blocks.take(index)
         right = field.blocks.drop(index)
+        //syncCaret()
         val newLeft = field.copy(blocks = mutableStateListOf(*left.toTypedArray())).normalise()
         val newRight = field.copy(blocks = mutableStateListOf(*right.toTypedArray())).normalise()
         return Pair(newLeft.blocks.toMutableList(), newRight.blocks.toMutableList())
@@ -519,8 +559,16 @@ println("IF 1 IN SPLITFIELDAT")
         val caretLocGlobOffset = getLocGlobalFieldOffsetForABlock(field, posBlock.id, caretStart)
         val posOffsetLocGlobOffset = getLocGlobalFieldOffsetForABlock(field, posBlock.id, offset)
         //if()
-
+        println("POS BLOCK: $posBlock")
+        println("POS BLOCK LENGTH: ${posBlock.length}")
+        println("OFFSET PASSED TO splitTextBlock: $offset")
         val (leftText, rightText) = splitTextBlock(posBlock, offset)
+        val newCaretBlockId = leftText.id        // old id survives the split
+        globalCaret.value = globalCaret.value.copy(
+            blockId       = newCaretBlockId,
+            offsetInBlock = globalCaret.value.offsetInBlock.coerceAtMost(leftText.length)
+        )
+        //syncCaret()
         println("left: $left")
         println("left text: $leftText")
         println("right text: $rightText")
@@ -645,6 +693,7 @@ fun DocumentState.splitFieldAt(fieldIdx: Int, pos: Pos) {
 
     fields[fieldIdx] = newTop
     fields.add(fieldIdx + 1, newBottom)
+    //syncCaret()
 }
 
 fun DocumentState.measureText(
@@ -693,6 +742,8 @@ fun DocumentState.measureField(
                 textStyle,
                 maxWidth
             )
+
+
             val xPos = maxWidth.toFloat() - Float.MIN_VALUE
             blockMeasureResults.add(
                 idx,
@@ -702,8 +753,9 @@ fun DocumentState.measureField(
             println("blockMeasurerResults for $idx: ${blockMeasureResults}")
             var blockWidth = result.size.width
             sumWidths += blockWidth
-            offsetInBlock = result.getOffsetForPosition(Offset(xPos, 0f))
+            offsetInBlock = result.lastFittingIndex(maxWidth)+1 //added 1 because it's a caret offset and returned was char offset
             blockWidths.add(idx, blockWidth)
+
             println("blk.length: ${blk.length}")
             println("block pixel width: ${blockWidth}")
         } else if (blk is Block.ImageBlock) {
@@ -743,7 +795,7 @@ fun DocumentState.measureField(
 
 
         if (sumWidths >= maxWidth) {
-            println("in measureField if sumwidths >= maxwidth.  didOF determined. idx: $idx")
+            println("in measureField if sumwidths >= maxwidth.  didOF determined. idx: $idx at Pos(idx, offsetInBlock): ${Pos(idx, offsetInBlock)}")
             didOF = true
             overflowPos = Pos(idx, offsetInBlock)
         }
@@ -753,6 +805,10 @@ fun DocumentState.measureField(
     println("---")
     println("           leaving measuredField()")
     println("---")
+    if (hasHardBreak && overflowPos == null) {
+        overflowPos = hardBreakPos
+
+    }
     return MeasureResult(
         width = sumWidths,
         overflow = didOF,
@@ -786,20 +842,23 @@ fun DocumentState.measureLine(
 
 
 fun DocumentState.updateGlobalCaretPosition() {
+    val caret = globalCaret.value
+    println("in updateGlobalCaretPosition()")
     require(globalCaret.value.fieldId != null)
     require(globalCaret.value.blockId != null)
-    val fid = fields.indexOfFirst { it.id == globalCaret.value.fieldId }
-    require(fid >= 0) { "Field doesn't exist (id = ${globalCaret.value.fieldId})" }
+    val fid = fields.indexOfFirst { it.id == caret.fieldId }
+    require(fid >= 0) { "Field doesn't exist (id = ${caret.fieldId})" }
 
     val blocksList = fields[fid].blocks
 
     // Find the TextBlock index
-    val bid = blocksList.indexOfFirst { it is Block.TextBlock && it.id == globalCaret.value.blockId }
-    require(bid >= 0) { "Block doesn't exist (id = ${globalCaret.value.blockId})" }
+    val bid = blocksList.indexOfFirst { it is Block.TextBlock && it.id == caret.blockId }
+    require(bid >= 0) { "Block doesn't exist (id = ${caret.blockId})" }
 
     val field = fields[fid]
 
     val block = blocksList[bid] as Block.TextBlock
+    println("block coords: ${block.layoutCoordinates}")
     val blockCoords = block.layoutCoordinates ?: return
     val rootCoords = rootReferenceCoordinates.value.coordinates ?: return
 
@@ -807,7 +866,7 @@ fun DocumentState.updateGlobalCaretPosition() {
     val layoutResult = block.textLayoutResult ?: return
     val localOffset =
         layoutResult.getCursorRect(
-            globalCaret.value.offsetInBlock.coerceIn(
+            caret.offsetInBlock.coerceIn(
                 0,
                 layoutResult.layoutInput.text.length
             )
@@ -820,16 +879,18 @@ fun DocumentState.updateGlobalCaretPosition() {
     val height = layoutResult.getLineBottom(0) - layoutResult.getLineTop(0)
 
     // Update caret state with calculated values
-    globalCaret.value = globalCaret.value.copy(
+    globalCaret.value = caret.copy(
         globalPosition = globalOffset,
         height = height.coerceAtLeast(16f)
     )
 
+
 }
 
 fun DocumentState.onGlobalCaretMoved() {
+    println("in onGlobalCaretMoved()")
     updateGlobalCaretPosition()
-
+    println("leaving updateGlobalCaretPosition()")
 
     // Find the field index
     val fid = fields.indexOfFirst { it.id == globalCaret.value.fieldId }
@@ -838,28 +899,35 @@ fun DocumentState.onGlobalCaretMoved() {
     val blocksList = fields[fid].blocks
 
     // Find the TextBlock index
-    val bid = blocksList.indexOfFirst { it is Block.TextBlock && it.id == globalCaret.value.blockId }
+    val bid =
+        fields[fid].blocks.indexOfFirst { it is Block.TextBlock && it.id == globalCaret.value.blockId }
     require(bid >= 0) { "Block doesn't exist (id = ${globalCaret.value.blockId})" }
 
     // Update focus to this block
+    //println("calling updateFocusedBlock()")
     updateFocusedBlock(globalCaret.value.blockId)
+    //println("leaving updateFocusedBlock()")
 
     // Safely cast to TextBlock
     val textBlock = blocksList[bid] as? Block.TextBlock
     val currentTFV = textBlock?.textFieldValue
+    println("----------------------- LINE 855")
     if (currentTFV != null) {
+        println("---------------CONFIRMED NOT NULL")
         // Create a new TextFieldValue with the caret position as both selection start and end
+        println("currentTFV: $currentTFV")
         val newTFV = currentTFV.copy(
             selection = TextRange(globalCaret.value.offsetInBlock, globalCaret.value.offsetInBlock)
         )
+        println("newTFV: $newTFV")
 
         // Replace the old TextBlock with an updated one
         val updatedTextBlock = textBlock.copy(textFieldValue = newTFV)
         blocksList[bid] = updatedTextBlock
 
-        // println("onGlobalCaretMoved() current block.textlayoutresult ${textBlock.textLayoutResult}")
-        //  println("tfv updated in onGlobalCaretMoved()")
+
     }
+    println("leaving onGlobalCaretMoved()")
 }
 
 fun DocumentState.updateFocusedBlock(blockId: String) {
@@ -896,12 +964,13 @@ fun DocumentState.handleOnTextLayout(fieldId: String, blockId: String, result: T
     val blocksList = fields[fid].blocks
     val bid = fields[fid].blocks.indexOfFirst {
         it is Block.TextBlock && it.id == blockId
-
     }
+    //just return. the list probably got desynched.
+    if(bid<0)return
     println("current field index: $fid")
     println("current block uuid: ${blockId}")
     println("size of block list in field: ${fields[fid].blocks.size}")
-    for(blk in fields[fid].blocks){
+    for (blk in fields[fid].blocks) {
         println("^^^^^^^^^^^^^^^^^^^^^^^^ ${blk.id} AND THE BLK ITSELF: ${blk}")
     }
     require(blocksList[bid] is Block.TextBlock)
@@ -919,6 +988,15 @@ fun DocumentState.handleOnTextLayout(fieldId: String, blockId: String, result: T
     //    This will trigger Compose to recompose anything reading `fields[fid].blocks`
     //blocksList[bid] = updatedTextBlock
     fields[fid].blocks[bid] = updatedTextBlock
+    println()
+    println("FIELD BEFORE NORAMLISATION: ${fields[fid]}")
+
+    println()
+    fields[fid] = fields[fid].normalise()
+    println()
+    println("FIELD AFTER NORAMLISATION: ${fields[fid]}")
+    println()
+    //syncCaret()
     if (globalCaret.value.blockId == block.id) {
         updateGlobalCaretPosition()
         println("just called update global caret pos from line 146")
@@ -940,6 +1018,10 @@ fun DocumentState.getTextMeasurer(): TextMeasurer {
     return textMeasurer as TextMeasurer
 }
 
+/*
+Process the TextFieldValue update callback from BasicTextField.
+newTFV is the new value associated with the block
+ */
 @OptIn(ExperimentalUuidApi::class)
 fun DocumentState.bprocessTFVUpdate(
     fieldId: String,
@@ -956,13 +1038,13 @@ fun DocumentState.bprocessTFVUpdate(
     val block = fields[fieldIndex].blocks[blockIndex] as Block.TextBlock
     val newTFV = block.textFieldValue.copy(
         annotatedString = newValue.annotatedString,
-        selection = newValue.selection
+        selection = TextRange(newValue.selection.start.coerceIn(0, newValue.annotatedString.length))
     )
 
     var blockListCopy = fields[fieldIndex].blocks.toList()
     blockListCopy = blockListCopy.toMutableStateList()
     blockListCopy.set(blockIndex, block.copy(textFieldValue = newTFV))
-    val proposedField = field.copy(
+    val proposedField = Field(
         id = "my balls",
         blocks = blockListCopy
     )
@@ -971,7 +1053,9 @@ fun DocumentState.bprocessTFVUpdate(
 
     if (!result.measureResult.overflow) {
         println("in bprocessTFVUpdate(). result.measureResult.overflow is false")
-        fields[fieldIndex].blocks[blockIndex] = block.copy(textFieldValue = newTFV)
+        //fields[fieldIndex].blocks[blockIndex] = block.copy(textFieldValue = newTFV)
+        fields[fieldIndex].blocks.clear()
+        fields[fieldIndex].blocks.addAll(blockListCopy.toMutableStateList())
         fields[fieldIndex].normalise()
         // *** unconditionally sync the global caret to whatever the local selection now is ***
         globalCaret.value = globalCaret.value.copy(
@@ -989,6 +1073,9 @@ fun DocumentState.bprocessTFVUpdate(
         //a) < than 500: update global caret to be such.
         //b >= than 500: implies that the global caret will reside in a later field than the current.
 
+        /*
+        IMPORTANTLY: need to set the global caret to the length of overflowBlocks
+         */
         val (fittingBlocks, overflowBlocks) = splitFieldAt(
             field = proposedField,
             pos = result.measureResult.overflowPos!!
@@ -1001,6 +1088,9 @@ fun DocumentState.bprocessTFVUpdate(
         println("fittingBlocks: ${fittingBlocks}")
         println("overflowBlocks: ${overflowBlocks}")
 
+        //short circuit if only 1 textblock on left:
+
+
         val xPos = maxWidth.toFloat() - Float.MIN_VALUE
 
         //Need to have fxn calculate the number of caret positions per field - tfv.length + 1 for every textblock in the field.
@@ -1009,6 +1099,7 @@ fun DocumentState.bprocessTFVUpdate(
         val OFresult = result.measureResult.overflowPos
         val caretDist =
             globalCaret.value.globalPosition.x //caretDist = result.measureResult.blockMeasureResults[blockIndex].textBlockResult!!.getCursorRect(newValue.selection.start).right.coerceIn(0F, maxWidth.toFloat())
+
         val locGlobCaretOffset = getLocGlobalFieldOffsetForABlock(
             proposedField,
             globalCaret.value.blockId,
@@ -1029,7 +1120,7 @@ fun DocumentState.bprocessTFVUpdate(
         //if(caretDist >= xPos){
 
         //require(locGlobalOverflowPos != null && locGlobCaretOffset != null) { "should not be null" }
-        if(locGlobalOverflowPos != null && locGlobCaretOffset != null) {
+        if (locGlobalOverflowPos != null && locGlobCaretOffset != null) {
             if (locGlobCaretOffset >= locGlobalOverflowPos) {
                 println("^^^^^^^^^^^^^^^^^^^^^^^^ caretDist GREATER OR EQUAL TO xPos")
                 val splitPos = result.measureResult.overflowPos
@@ -1040,25 +1131,21 @@ fun DocumentState.bprocessTFVUpdate(
                 val proposedOverflowFieldBlocks = overflowBlocks
                 val selection = locGlobCaretOffset - locGlobalOverflowPos
 
-                fields.set(
-                    fieldIndex, fields[fieldIndex].copy(
-                        id = fieldId,
-                        blocks = fittingBlocks.toMutableStateList()
-                    )
-                )
+                fields[fieldIndex].blocks.clear()
+                fields[fieldIndex].blocks.addAll(fittingBlocks) // updated the origin field
 
-                //must insert field below, then prepend proposedOFBlocks to it, then update caret.
+
+                //must insert field below,
+                // then prepend proposedOFBlocks to it, then update caret.
                 if (fields.lastIndex == fieldIndex) {
                     val oid = overflowBlocks.indexOfFirst { it is Block.TextBlock }
                     val tb = overflowBlocks[oid] as Block.TextBlock
-                    overflowBlocks.set(
-                        oid,
-                        tb.copy(
-                            textFieldValue = tb.textFieldValue.copy(
-                                selection = TextRange(
-                                    selection,
-                                    selection
-                                )
+                    val carOffset = tb.textFieldValue.text.length
+                    overflowBlocks[oid] = tb.copy(
+                        textFieldValue = tb.textFieldValue.copy(
+                            selection = TextRange(
+                                //selection set to the length of the field because we want to wrap the caret below.
+                                carOffset
                             )
                         )
                     )
@@ -1073,10 +1160,14 @@ fun DocumentState.bprocessTFVUpdate(
                     globalCaret.value = globalCaret.value.copy(
                         fieldId = newFieldId,
                         blockId = tb.id,
-                        offsetInBlock = selection
+                        offsetInBlock = carOffset
                     )
                     onGlobalCaretMoved()
-                } else {
+                }
+                /*
+                Already an existing field below.
+                 */
+                else {
 
                     if (overflowBlocks.size == 1 && overflowBlocks[0] is Block.DelimiterBlock) {
                         val block = overflowBlocks[0] as Block.DelimiterBlock
@@ -1453,34 +1544,34 @@ fun DocumentState.handleOnValueChange(
  */
 fun DocumentState.updateBlockCoords(
     fieldId: String,
-    block: Block,
+    blockId: String,
     newCoordinates: LayoutCoordinates
 ) {
     val fid = fields.indexOfFirst {
         it.id == fieldId
     }
     val blocksList = fields[fid].blocks
-    val bid = fields[fid].blocks.indexOfFirst {
-        it.id == block.id
+    val bid = blocksList.indexOfFirst {
+        it.id == blockId
     }
 
+    val block = blocksList[bid]
     require(fid > -1) { "field doesn't exist" }
 
     require(bid > -1) { "block doesn't exist" }
 
     //val updatedTextBlock = block.copy(layoutCoordinates = newCoordinates)
-    if(block is Block.TextBlock) {
+    if (block is Block.TextBlock) {
         val updatedTextBlock = blocksList[bid] as Block.TextBlock
         //    This will trigger Compose to recompose anything reading `fields[fid].blocks`
         blocksList[bid] = updatedTextBlock.copy(layoutCoordinates = newCoordinates)
-    }
-    else if (block is Block.ImageBlock) {
+    } else if (block is Block.ImageBlock) {
         val updatedImageBlock = blocksList[bid] as Block.ImageBlock
         //    This will trigger Compose to recompose anything reading `fields[fid].blocks`
         blocksList[bid] = updatedImageBlock.copy(layoutCoordinates = newCoordinates)
     }
 
-    if (globalCaret.value.blockId == block.id) updateGlobalCaretPosition()
+    if (globalCaret.value.blockId == blockId) updateGlobalCaretPosition()
 
 }
 

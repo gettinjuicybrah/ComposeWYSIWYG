@@ -6,10 +6,12 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import com.joeybasile.composewysiwyg.model.document.Block
 import com.joeybasile.composewysiwyg.model.DocumentState
+import com.joeybasile.composewysiwyg.model.caret.syncCaret
 import com.joeybasile.composewysiwyg.model.document.Field
 import com.joeybasile.composewysiwyg.model.document.Pos
 import com.joeybasile.composewysiwyg.model.getFieldReport
 import com.joeybasile.composewysiwyg.model.document.normalise
+import com.joeybasile.composewysiwyg.model.document.normalizeBlockList
 import com.joeybasile.composewysiwyg.model.splitFieldAt
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -103,8 +105,12 @@ fun DocumentState.genericPullDown(
             println("the OVERFLOWING blocks: ${overflowBlocks}")
             println("clearing all blocks at specified index.")
             fields[fIndex].blocks.clear()
+            //normalizeBlockList(fields[fIndex].blocks)
+            //syncCaret()
             println("blocks AFTER clear: ${fields[fIndex].blocks}")
             fields[fIndex].blocks.addAll(fittingBlocks)
+            //normalizeBlockList(fields[fIndex].blocks)
+            //syncCaret()
             println("blocks AFTER addAll: ${fields[fIndex].blocks}")
 
             //if we are the last line, then this means we just create a below line and prepend to it. If not, we'll just prepend to the existing below line.
@@ -117,11 +123,14 @@ fun DocumentState.genericPullDown(
                     Field(
                         id = Uuid.random().toString(),
                         blocks = overflowBlocks.toMutableStateList()
-                    ).normalise()
+                    )//.normalise()
                 )
+                //syncCaret()
             } else {
                 println("   ELSE IF 1B")
                 fields[fIndex + 1].blocks.addAll(0, overflowBlocks)
+                fields[fIndex + 1] = fields[fIndex + 1]//.normalise()
+                //syncCaret()
             }
             //Because there was certainly a field below, we will always iterate on it.
             proposedField = fields[fIndex + 1]
@@ -144,7 +153,8 @@ fun DocumentState.genericPullDown(
             println("DOESN'T REQUIRE PULLDOWN. BREAKING OUT OF LOOP.")
             fields[fIndex] = fields[fIndex].copy(
                 blocks = proposedField.blocks
-            ).normalise()
+            )
+            //syncCaret()
             /*
             //FOR PURPOSE OF TFV UPDATE.
             if(loopCount == 0 && purposeTFVUpdate){
@@ -192,7 +202,7 @@ fun DocumentState.splitTextBlock(
 
     val rightTFV = TextFieldValue(
         annotatedString = rightString,
-        selection = TextRange.Zero
+        selection = TextRange(rightString.length)
     )
 
     val leftBlock = Block.TextBlock(
@@ -205,6 +215,10 @@ fun DocumentState.splitTextBlock(
         textFieldValue = rightTFV,
         focusRequester = FocusRequester()
     )
+    println("leftString: $leftString")
+    println("leftString LENGTH: ${leftString.length}")
+    println("rightString: $rightString")
+    println("rightString LENGTH: ${rightString.length}")
     println(")))))) leaving splitTextBlock(). leftBlock: $leftBlock, rightBlock: $rightBlock")
     return Pair(leftBlock, rightBlock)
 

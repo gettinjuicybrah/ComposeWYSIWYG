@@ -6,6 +6,9 @@ import com.joeybasile.composewysiwyg.model.caret.moveGlobalCaretDown
 import com.joeybasile.composewysiwyg.model.caret.moveGlobalCaretLeft
 import com.joeybasile.composewysiwyg.model.caret.moveGlobalCaretRight
 import com.joeybasile.composewysiwyg.model.caret.moveGlobalCaretUp
+import com.joeybasile.composewysiwyg.model.selection.goArrowDir
+import com.joeybasile.composewysiwyg.model.selection.startShiftSelection
+import com.joeybasile.composewysiwyg.model.selection.updateShiftSelection
 
 fun DocumentState.onEvent(event: DocumentEvent) {
     when (event) {
@@ -20,15 +23,13 @@ fun DocumentState.onEvent(event: DocumentEvent) {
         }
 
         is DocumentEvent.Selection.GoArrowDir -> {
-
+            goArrowDir(event.direction)
         }
-
         is DocumentEvent.Selection.StartShift -> {
-
+            startShiftSelection(event.direction)
         }
-
         is DocumentEvent.Selection.UpdateShift -> {
-
+            updateShiftSelection(event.direction)
         }
 
         is DocumentEvent.EnterPressed -> {

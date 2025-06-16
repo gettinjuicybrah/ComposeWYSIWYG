@@ -8,12 +8,33 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Constraints
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+/**
+ * @return index of the last code-unit that is completely inside [maxWidthPx].
+ *         If nothing fits, returns -1.
+ */
+fun TextLayoutResult.lastFittingIndex(maxWidthPx: Int): Int {
+    var lo = 0
+    var hi = layoutInput.text.length    // exclusive
+    while (lo < hi) {
+        val mid = (lo + hi + 1) / 2
 
+        // Caret AFTER the glyph at (mid-1)
+        val rightEdge = getHorizontalPosition(mid, usePrimaryDirection = true)
+
+        if (rightEdge <= maxWidthPx) {
+            lo = mid            // (mid-1) still fits → search the right half
+        } else {
+            hi = mid - 1        // (mid-1) overflows → search the left half
+        }
+    }
+    return lo - 1               // -1 if nothing fit at all
+}
 internal fun Block.TextBlock.measure(
     textMeasurer: TextMeasurer,
     textStyle: TextStyle,
@@ -26,10 +47,15 @@ internal fun Block.TextBlock.measure(
         maxLines = 1,
         softWrap = false
     )
-    val xPos = maxWidthPx.toFloat() - Float.MIN_VALUE
-    val maxMeasuredOffset = result.getOffsetForPosition(Offset(xPos, 0f))
-    //val maxFittingOffset = result.getLineEnd(lineIndex = 0, visibleEnd = true)
-    println("WITHIN TEXTBLOCK.MEASURE. maxFittingOffset: $maxMeasuredOffset, textFieldValue.text.length: ${textFieldValue.text.length} ")
+    println("did OF in textblock: ${result.didOverflowWidth}")
+    val lastInBounds = result.lastFittingIndex(maxWidthPx)
+    println("")
+    println("last in bounds: $lastInBounds")
+    println("")
+    val firstOverflow = if(result.didOverflowWidth)lastInBounds + 1 else -1
+    println("")
+    println("first overflow: $firstOverflow")
+    println("")
     val pixelWidth = result.size.width
     return result//Pair(maxMeasuredOffset, pixelWidth)
 }
@@ -143,7 +169,6 @@ fun Field.normalise(): Field {
         } else i++
     }
 
-
     // ensure ImageBlock is followed by TextBlock (P‑2)
     i = 0
     while (i < tmp.lastIndex) {
@@ -193,6 +218,6 @@ internal fun normalizeBlockList(blocks: MutableList<Block>) {
 @OptIn(ExperimentalUuidApi::class)
 fun emptyTextBlock() = Block.TextBlock(
     id = Uuid.random().toString(),
-    textFieldValue = TextFieldValue(annotatedString = AnnotatedString("")),
+    textFieldValue = TextFieldValue(annotatedString = AnnotatedString(""), selection = TextRange.Zero),
     focusRequester = FocusRequester()
 )

@@ -4,6 +4,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.LayoutCoordinates
+import com.joeybasile.composewysiwyg.events.DocumentEvent
 import com.joeybasile.composewysiwyg.model.DocumentState
 import com.joeybasile.composewysiwyg.model.document.Block
 import com.joeybasile.composewysiwyg.model.document.Field
@@ -12,6 +13,7 @@ import com.joeybasile.composewysiwyg.model.document.getFieldIndex
 import com.joeybasile.composewysiwyg.model.document.getLocGlobalFieldOffsetForABlock
 import com.joeybasile.composewysiwyg.model.document.normalizeBlockList
 import com.joeybasile.composewysiwyg.model.getFieldById
+import com.joeybasile.composewysiwyg.model.onGlobalCaretMoved
 import kotlin.math.max
 import kotlin.math.min
 
@@ -30,6 +32,7 @@ fun DocumentState.setFocusCaret(focus: GlobalSelectionCaretState) {
 }
 
 fun DocumentState.rebuildSelectionFromAnchorAndFocus() {
+
     // Guard: If selection is not truly active or anchor/focus are somehow null,
     // ensure segments are cleared and do nothing further.
     if (!globalSelectionState.isActive || globalSelectionState.anchor == null || globalSelectionState.focus == null) {
@@ -59,6 +62,15 @@ fun DocumentState.rebuildSelectionFromAnchorAndFocus() {
         return // Stop further processing.
     }
 
+// 1b. **new**: blockIndex in range
+    val anchorBlocks = fields[anchorIndices.fieldIndex].blocks
+    val focusBlocks = fields[focusIndices.fieldIndex].blocks
+    if (anchorIndices.blockIndex !in anchorBlocks.indices ||
+        focusIndices.blockIndex !in focusBlocks.indices
+    ) {
+        finishSelection()
+        return
+    }
     // 2. Check if offsets are within the bounds of their respective field's current text length.
     // These fields are guaranteed to exist due to the previous check.
     val anchorBlock =
@@ -93,6 +105,7 @@ fun DocumentState.rebuildSelectionFromAnchorAndFocus() {
 
      */
 }
+
 /**
  * Result of collapsing a multi-field selection.
  *
@@ -104,11 +117,12 @@ fun DocumentState.rebuildSelectionFromAnchorAndFocus() {
  */
 data class MergeResult(
     val startFieldIndex: Int,
-    val endFieldIndex:   Int,
-    val mergedBlocks:    List<Block>,
-    val caretBlockId:    String,
+    val endFieldIndex: Int,
+    val mergedBlocks: List<Block>,
+    val caretBlockId: String,
     val caretOffsetInBlock: Int
 )
+
 /* build a *prefix* of a block – everything **before** `offset`                */
 private fun Block.prefix(offset: Int): Block? = when (this) {
     is Block.TextBlock -> {
@@ -117,9 +131,10 @@ private fun Block.prefix(offset: Int): Block? = when (this) {
                 annotatedString = textFieldValue.annotatedString.subSequence(0, offset)
             ),
             layoutCoordinates = null,
-            textLayoutResult  = null
+            textLayoutResult = null
         )
     }
+
     is Block.ImageBlock, is Block.DelimiterBlock ->
         if (offset <= 0) null else this        // offset == 1 ⇒ keep block
 }
@@ -133,9 +148,10 @@ private fun Block.suffix(offset: Int): Block? = when (this) {
                     .subSequence(offset, length)
             ),
             layoutCoordinates = null,
-            textLayoutResult  = null
+            textLayoutResult = null
         )
     }
+
     is Block.ImageBlock, is Block.DelimiterBlock ->
         if (offset >= 1) null else this        // offset == 0 ⇒ keep block
 }
@@ -147,6 +163,7 @@ private fun ensureNonEmpty(blocks: MutableList<Block>) {
     }
     normalizeBlockList(blocks)                 // P-2, P-3, P-4
 }
+
 /**
  * Collapses the current GlobalSelection into a single caret and returns all
  * information the caller needs to mutate the document.
@@ -156,14 +173,14 @@ fun DocumentState.mergeSelection(): MergeResult? {
     /* ─── 0.  Preconditions & ordering ──────────────────────────────────── */
 
     val anchor = globalSelectionState.anchor ?: return null
-    val focus  = globalSelectionState.focus  ?: return null
+    val focus = globalSelectionState.focus ?: return null
 
     val (start, end) =
         getOrderedGlobalSelectionCaretsWithIndices(anchor, focus) ?: return null
     if (start == end) return null                    // nothing to merge
 
     val startFieldIdx = start.fieldIndex
-    val endFieldIdx   = end.fieldIndex
+    val endFieldIdx = end.fieldIndex
 
     /* ─── 1.  Build new block list for the *start* field ────────────────── */
 
@@ -185,7 +202,7 @@ fun DocumentState.mergeSelection(): MergeResult? {
         val sameField = fields[startFieldIdx]
 
         val isSameBlock = start.blockIndex == end.blockIndex
-        val endBlock    = sameField.blocks[end.blockIndex]
+        val endBlock = sameField.blocks[end.blockIndex]
 
         when {
             isSameBlock -> {
@@ -205,6 +222,7 @@ fun DocumentState.mergeSelection(): MergeResult? {
                     mergedBlocks += tail
                 }
             }
+
             else -> {
                 /* suffix of a *different* end-block + trailing blocks     */
                 endBlock.suffix(end.caret.offsetInBlock)?.let { mergedBlocks += it }
@@ -218,8 +236,8 @@ fun DocumentState.mergeSelection(): MergeResult? {
         /* 2B.  Multi-field merge ---------------------------------------- */
 
         /* suffix of the *end* field                                       */
-        val endField  = fields[endFieldIdx]
-        val endBlock  = endField.blocks[end.blockIndex]
+        val endField = fields[endFieldIdx]
+        val endBlock = endField.blocks[end.blockIndex]
 
         endBlock.suffix(end.caret.offsetInBlock)?.let { mergedBlocks += it }
         mergedBlocks += endField.blocks.subList(end.blockIndex + 1, endField.blocks.size)
@@ -238,21 +256,22 @@ fun DocumentState.mergeSelection(): MergeResult? {
     }
 
     val caretOffset = when (val blk = mergedBlocks.first { it.id == caretBlockId }) {
-        is Block.TextBlock     -> minOf(start.caret.offsetInBlock, blk.length)
-        is Block.ImageBlock    -> 1          // caret sits *after* the image
-        is Block.DelimiterBlock-> 1
+        is Block.TextBlock -> minOf(start.caret.offsetInBlock, blk.length)
+        is Block.ImageBlock -> 1          // caret sits *after* the image
+        is Block.DelimiterBlock -> 1
     }
 
     /* ─── 5.  Emit result ------------------------------------------------ */
 
     return MergeResult(
-        startFieldIndex    = startFieldIdx,
-        endFieldIndex      = endFieldIdx,
-        mergedBlocks       = mergedBlocks,
-        caretBlockId       = caretBlockId,
+        startFieldIndex = startFieldIdx,
+        endFieldIndex = endFieldIdx,
+        mergedBlocks = mergedBlocks,
+        caretBlockId = caretBlockId,
         caretOffsetInBlock = caretOffset
     )
 }
+
 /**
  * Recomputes a list of SelectionSegment between two carets
  * across single or multiple fields in document order.
@@ -285,23 +304,23 @@ private fun DocumentState.computeSegmentsBetween(
     fun makeSegment(
         field: Field,
         startPair: Pair<String, Int>,
-        endPair:   Pair<String, Int>
+        endPair: Pair<String, Int>
     ): GlobalSelectionSegment? {
         val rect = getFieldSelectionRect(
-            fieldId            = field.id,
-            startBlockId       = startPair.first,
+            fieldId = field.id,
+            startBlockId = startPair.first,
             startOffsetInBlock = startPair.second,
-            endBlockId         = endPair.first,
-            endOffsetInBlock   = endPair.second,
-            rootCoords         = rootCoords
+            endBlockId = endPair.first,
+            endOffsetInBlock = endPair.second,
+            rootCoords = rootCoords
         ) ?: return null
 
         return GlobalSelectionSegment(
-            fieldId                          = field.id,
-            height                           = rect.height,      // tallest thing in span
-            startBlockIdAndOffsetInBlock     = startPair,
-            endBlockIdAndOffsetInBlock       = endPair,
-            rect                             = rect
+            fieldId = field.id,
+            height = rect.height,      // tallest thing in span
+            startBlockIdAndOffsetInBlock = startPair,
+            endBlockIdAndOffsetInBlock = endPair,
+            rect = rect
         )
     }
 
@@ -315,7 +334,7 @@ private fun DocumentState.computeSegmentsBetween(
         makeSegment(
             field,
             startPair = start.caret.blockId to start.caret.offsetInBlock,
-            endPair   = end.caret.blockId   to end.caret.offsetInBlock
+            endPair = end.caret.blockId to end.caret.offsetInBlock
         )?.let { segments += it }
 
         return segments
@@ -329,7 +348,7 @@ private fun DocumentState.computeSegmentsBetween(
         makeSegment(
             field,
             startPair = start.caret.blockId to start.caret.offsetInBlock,
-            endPair   = lastCaretOf(field)
+            endPair = lastCaretOf(field)
         )?.let { segments += it }
     }
 
@@ -339,7 +358,7 @@ private fun DocumentState.computeSegmentsBetween(
         makeSegment(
             field,
             startPair = firstCaretOf(field),
-            endPair   = lastCaretOf(field)
+            endPair = lastCaretOf(field)
         )?.let { segments += it }
     }
 
@@ -349,7 +368,7 @@ private fun DocumentState.computeSegmentsBetween(
         makeSegment(
             field,
             startPair = firstCaretOf(field),
-            endPair   = end.caret.blockId to end.caret.offsetInBlock
+            endPair = end.caret.blockId to end.caret.offsetInBlock
         )?.let { segments += it }
     }
 
@@ -464,12 +483,12 @@ private fun DocumentState.getFieldSelectionRect(
     fun caretRect(block: Block, offset: Int): Rect? {
         return when (block) {
             is Block.TextBlock -> {
-                val result  = block.textLayoutResult    ?: return null
-                val coords  = block.layoutCoordinates   ?: return null
+                val result = block.textLayoutResult ?: return null
+                val coords = block.layoutCoordinates ?: return null
 
-                val safe    = offset.coerceIn(0, result.layoutInput.text.length)
-                val local   = result.getCursorRect(safe)       // in block-local space
-                val global  = rootCoords.localPositionOf(
+                val safe = offset.coerceIn(0, result.layoutInput.text.length)
+                val local = result.getCursorRect(safe)       // in block-local space
+                val global = rootCoords.localPositionOf(
                     coords,
                     Offset(local.left, local.top)
                 )
@@ -492,8 +511,8 @@ private fun DocumentState.getFieldSelectionRect(
             }
 
             is Block.ImageBlock, is Block.DelimiterBlock -> {
-                val coords  = block.layoutCoordinates ?: return null
-                val origin  = rootCoords.localPositionOf(coords, Offset.Zero)
+                val coords = block.layoutCoordinates ?: return null
+                val origin = rootCoords.localPositionOf(coords, Offset.Zero)
 
                 // Use field bounds for height if available, otherwise use block height
                 val height = if (useFieldBounds) {
@@ -509,9 +528,9 @@ private fun DocumentState.getFieldSelectionRect(
                 // pick left or right edge depending on offset
                 val dx = if (offset <= 0) 0f else coords.size.width.toFloat()
                 Rect(
-                    left   = origin.x + dx,
-                    top    = top,
-                    right  = origin.x + dx + size.width,
+                    left = origin.x + dx,
+                    top = top,
+                    right = origin.x + dx + size.width,
                     bottom = top + size.height
                 )
             }
@@ -521,7 +540,7 @@ private fun DocumentState.getFieldSelectionRect(
     /* ---------- Build caret rectangles ----------------------------------- */
 
     val startBlock = field.blocks.firstOrNull { it.id == startBlockId } ?: return null
-    val endBlock   = field.blocks.firstOrNull { it.id == endBlockId   } ?: return null
+    val endBlock = field.blocks.firstOrNull { it.id == endBlockId } ?: return null
 
     // single-caret case
     if (startBlockId == endBlockId && startOffsetInBlock == endOffsetInBlock) {
@@ -529,20 +548,23 @@ private fun DocumentState.getFieldSelectionRect(
     }
 
     val startRect = caretRect(startBlock, startOffsetInBlock) ?: return null
-    val endRect   = caretRect(endBlock,   endOffsetInBlock)   ?: return null
+    val endRect = caretRect(endBlock, endOffsetInBlock) ?: return null
 
     /* ---------- Bounding box --------------------------------------------- */
 
-    val left   = min(startRect.left,   endRect.left)
-    val right  = max(startRect.right,  endRect.right)
-    val top    = min(startRect.top,    endRect.top)
+    val left = min(startRect.left, endRect.left)
+    val right = max(startRect.right, endRect.right)
+    val top = min(startRect.top, endRect.top)
     val bottom = max(startRect.bottom, endRect.bottom)
 
     return Rect(left, top, right, bottom)
 }
+
 fun DocumentState.finishSelection() {
-    globalSelectionState = globalSelectionState.copy(anchor = null, focus = null, segments = emptyList())
+    globalSelectionState =
+        globalSelectionState.copy(anchor = null, focus = null, segments = emptyList())
 }
+
 fun DocumentState.startDragSelection(globalOffset: Offset) {
     toSelectionCaret(globalOffset)?.let { dragCaret ->
         setAnchorCaret(dragCaret)
@@ -557,22 +579,318 @@ fun DocumentState.updateDragSelection(globalOffset: Offset) {
         rebuildSelectionFromAnchorAndFocus()
     }
 }
+
+fun DocumentState.startShiftSelection(direction: DocumentEvent.Selection.Direction) {
+    // If no anchor yet, this is “first arrow”
+    if (globalSelectionState.anchor == null) {
+        // 1) Record the original caret as the anchor
+        val original = globalCaret.value
+
+        setAnchorCaret(
+            GlobalSelectionCaretState(
+                fieldId = original.fieldId,
+                blockId = original.blockId,
+                offsetInBlock = original.offsetInBlock,
+                globalPosition = original.globalPosition
+            )
+        )
+
+        // 2) Compute the very first focus one step over
+        val firstFocus = computeAdjacentCaret(globalSelectionState.anchor!!, direction)
+        setFocusCaret(firstFocus)
+    } else {
+        // Subsequent arrows: just move the focus
+        val prevFocus = globalSelectionState.focus!!
+        val newFocus = computeAdjacentCaret(prevFocus, direction)
+        setFocusCaret(newFocus)
+    }
+
+    // 3) Rebuild ALL segments from the immutable anchor and fresh focus
+    rebuildSelectionFromAnchorAndFocus()
+}
+
+fun DocumentState.updateShiftSelection(direction: DocumentEvent.Selection.Direction) {
+    // 1) Ensure there’s an anchor; if not, defer to startShiftArrowSelection
+    if (globalSelectionState.anchor == null) {
+        startShiftSelection(direction)
+        return
+    }
+
+    // 2) Compute the new focus by moving one logical step
+    val previousFocus = globalSelectionState.focus!!
+    val newFocus = computeAdjacentCaret(previousFocus, direction)
+    setFocusCaret(newFocus)
+
+    // 3) Rebuild all selection segments from the immutable anchor → new focus
+    rebuildSelectionFromAnchorAndFocus()
+}
+
+private fun DocumentState.computeAdjacentCaret(
+    from: GlobalSelectionCaretState,
+    direction: DocumentEvent.Selection.Direction
+): GlobalSelectionCaretState {
+    return when (direction) {
+        DocumentEvent.Selection.Direction.Left -> moveOneLeft(from)
+        DocumentEvent.Selection.Direction.Right -> moveOneRight(from)
+        DocumentEvent.Selection.Direction.Up -> moveOneUp(from)
+        DocumentEvent.Selection.Direction.Down -> moveOneDown(from)
+    }
+}
+
+/** This is a crucial piece of the interaction model. The goArrowDir function acts
+ * as the bridge between having an active, ranged selection and collapsing it back
+ * into a single, mobile caret. The logic must be precise.
+ * Collapses the current selection in the direction of the arrow key press.
+ * If there is no selection, this function has no effect. The caller is
+ * responsible for handling simple caret movement when no selection is active.
+ *
+ * @param direction The arrow key direction that triggered the collapse.
+ */
+fun DocumentState.goArrowDir(direction: DocumentEvent.Selection.Direction) {
+    // 1) Determine the boundary of the selection to collapse to.
+    // This will be the "start" for Left/Up, and the "end" for Right/Down.
+    // If there is no selection to get a boundary from, there's nothing to do.
+    val boundary = getBoundaryCaret(direction) ?: return
+
+    // 2) Calculate the final target position for the caret.
+    // For Left/Right, the target is the boundary itself.
+    // For Up/Down, we "nudge" the caret one step away from the boundary
+    // to ensure it moves to the next or previous field.
+    val targetCaret = when (direction) {
+        DocumentEvent.Selection.Direction.Up,
+        DocumentEvent.Selection.Direction.Down ->
+            computeAdjacentCaret(boundary, direction)
+
+        DocumentEvent.Selection.Direction.Left,
+        DocumentEvent.Selection.Direction.Right ->
+            boundary
+    }
+
+    // 3) Clear the selection state entirely. This removes the anchor, focus,
+    // and all visual selection segments.
+    finishSelection()
+
+    // 4) Move the single, global document caret to the calculated target position.
+    // We only need to set the logical position; onGlobalCaretMoved will calculate
+    // the visual properties (globalPosition, height).
+    globalCaret.value = globalCaret.value.copy(
+        fieldId = targetCaret.fieldId,
+        blockId = targetCaret.blockId,
+        offsetInBlock = targetCaret.offsetInBlock
+    )
+
+    // 5) Synchronize the rest of the state. This updates the local TextFieldValue's
+    // selection, recalculates the caret's on-screen rectangle, and ensures
+    // focus is requested correctly.
+    onGlobalCaretMoved()
+}
+
+/**
+ * Given the current selection's anchor and focus, picks the boundary caret
+ * based on the desired movement direction.
+ * - Left/Up  → returns the caret that appears first in document order ("start").
+ * - Right/Down → returns the caret that appears last in document order ("end").
+ *
+ * Returns null if the selection is not active or carets are missing.
+ */
+private fun DocumentState.getBoundaryCaret(
+    direction: DocumentEvent.Selection.Direction
+): GlobalSelectionCaretState? {
+    val anchor = globalSelectionState.anchor
+    val focus = globalSelectionState.focus
+
+    // If selection isn't fully defined, there's no boundary to get.
+    if (anchor == null || focus == null) {
+        return focus ?: anchor // Return whichever one is not null, or null if both are.
+    }
+
+    // Use the helper to determine which caret is first ("start") and which is last ("end")
+    // in the document's logical order (top-to-bottom, left-to-right).
+    // This helper correctly compares field index, then block index, then offset within the block.
+    val (start, end) = getOrderedGlobalSelectionCarets(anchor, focus) ?: return null
+
+    return when (direction) {
+        DocumentEvent.Selection.Direction.Left,
+        DocumentEvent.Selection.Direction.Up -> start
+
+        DocumentEvent.Selection.Direction.Right,
+        DocumentEvent.Selection.Direction.Down -> end
+    }
+}
+
+private fun DocumentState.moveOneLeft(from: GlobalSelectionCaretState): GlobalSelectionCaretState {
+    val rootCoords = rootReferenceCoordinates.value.coordinates ?: return from
+
+    // 1. Get current position context
+    val fieldIndex = getFieldIndex(from.fieldId)
+    if(fieldIndex < 0) return from
+    val field = fields[fieldIndex]
+    val blockIndex = field.blocks.indexOfFirst { it.id == from.blockId }
+    val block = field.blocks[blockIndex]
+
+    // 2. Try moving within the current block
+    if (from.offsetInBlock > 0) {
+        val newCaret = from.copy(offsetInBlock = from.offsetInBlock - 1)
+        val newBlock =
+            getFieldById(newCaret.fieldId)?.blocks?.firstOrNull { it.id == newCaret.blockId } as? Block.TextBlock
+                ?: return from
+        val newRect =
+            getGlobalCursorRect(newBlock, newCaret.offsetInBlock, rootCoords) ?: return from
+        return newCaret.copy(globalPosition = newRect.topLeft)
+    }
+
+    // 3. At the start of a block, try moving to the previous block in the same field
+    if (blockIndex > 0) {
+        val prevBlock = field.blocks[blockIndex - 1]
+        val newOffset = prevBlock.length // Moves to the end of the previous block
+        val newCaret = from.copy(blockId = prevBlock.id, offsetInBlock = newOffset)
+
+        val newTextBlock =
+            getFieldById(newCaret.fieldId)?.blocks?.firstOrNull { it.id == newCaret.blockId } as? Block.TextBlock
+        if (newTextBlock != null) {
+            val newRect =
+                getGlobalCursorRect(newTextBlock, newCaret.offsetInBlock, rootCoords) ?: return from
+            return newCaret.copy(globalPosition = newRect.topLeft)
+        }
+        // If not a text block, we can still calculate a position (e.g., for an image)
+        // For now, let's assume a simple fallback or find the nearest text block.
+        // A full implementation would require a getGlobalCursorRect for non-text blocks.
+        return toSelectionCaret(from.globalPosition.copy(x = from.globalPosition.x - 1)) ?: from
+    }
+
+    // 4. At the start of a field, try moving to the last block of the previous field
+    if (fieldIndex > 0) {
+        val prevField = fields[fieldIndex - 1]
+        val lastBlock = prevField.blocks.last()
+        val newOffset = lastBlock.length
+        val newCaret =
+            from.copy(fieldId = prevField.id, blockId = lastBlock.id, offsetInBlock = newOffset)
+
+        val newTextBlock =
+            getFieldById(newCaret.fieldId)?.blocks?.firstOrNull { it.id == newCaret.blockId } as? Block.TextBlock
+                ?: return from
+        val newRect =
+            getGlobalCursorRect(newTextBlock, newCaret.offsetInBlock, rootCoords) ?: return from
+        return newCaret.copy(globalPosition = newRect.topLeft)
+    }
+
+    // 5. At the very beginning of the document
+    return from
+}
+
+private fun DocumentState.moveOneRight(from: GlobalSelectionCaretState): GlobalSelectionCaretState {
+    val rootCoords = rootReferenceCoordinates.value.coordinates ?: return from
+
+    // 1. Get current position context
+    val fieldIndex = getFieldIndex(from.fieldId)
+    if(fieldIndex < 0) return from
+    val field = fields.getOrNull(fieldIndex) ?: return from
+    val blockIndex = field.blocks.indexOfFirst { it.id == from.blockId }
+    val block = field.blocks.getOrNull(blockIndex) ?: return from
+
+    // 2. Try moving within the current block
+    if (from.offsetInBlock < block.length) {
+        val newCaret = from.copy(offsetInBlock = from.offsetInBlock + 1)
+        val newBlock =
+            getFieldById(newCaret.fieldId)?.blocks?.firstOrNull { it.id == newCaret.blockId } as? Block.TextBlock
+                ?: return from
+        val newRect =
+            getGlobalCursorRect(newBlock, newCaret.offsetInBlock, rootCoords) ?: return from
+        return newCaret.copy(globalPosition = newRect.topLeft)
+    }
+
+    // 3. At the end of a block, try moving to the next block in the same field
+    if (blockIndex < field.blocks.lastIndex) {
+        val nextBlock = field.blocks[blockIndex + 1]
+        val newCaret = from.copy(blockId = nextBlock.id, offsetInBlock = 0)
+
+        val newTextBlock =
+            getFieldById(newCaret.fieldId)?.blocks?.firstOrNull { it.id == newCaret.blockId } as? Block.TextBlock
+        if (newTextBlock != null) {
+            val newRect =
+                getGlobalCursorRect(newTextBlock, newCaret.offsetInBlock, rootCoords) ?: return from
+            return newCaret.copy(globalPosition = newRect.topLeft)
+        }
+        // Fallback for non-text blocks
+        return toSelectionCaret(from.globalPosition.copy(x = from.globalPosition.x + block.width + 1))
+            ?: from
+    }
+
+    // 4. At the end of a field, try moving to the first block of the next field
+    if (fieldIndex < fields.lastIndex) {
+        val nextField = fields[fieldIndex + 1]
+        val firstBlock = nextField.blocks.first()
+        val newCaret = from.copy(fieldId = nextField.id, blockId = firstBlock.id, offsetInBlock = 0)
+
+        val newTextBlock =
+            getFieldById(newCaret.fieldId)?.blocks?.firstOrNull { it.id == newCaret.blockId } as? Block.TextBlock
+                ?: return from
+        val newRect =
+            getGlobalCursorRect(newTextBlock, newCaret.offsetInBlock, rootCoords) ?: return from
+        return newCaret.copy(globalPosition = newRect.topLeft)
+    }
+
+    // 5. At the very end of the document
+    return from
+}
+
+private fun DocumentState.moveOneUp(from: GlobalSelectionCaretState): GlobalSelectionCaretState {
+    val fieldIndex = getFieldIndex(from.fieldId)
+    if (fieldIndex <= 0) return from // Already at the top field
+
+    val prevField = fields[fieldIndex - 1]
+
+    // Find the vertical center of the previous field to use as the target Y coordinate
+    val prevFieldFirstBlock = prevField.blocks.first()
+    val prevFieldCoords = prevFieldFirstBlock.layoutCoordinates ?: return from // Need layout info
+    val rootCoords = rootReferenceCoordinates.value.coordinates ?: return from
+
+    val prevFieldTopLeftInRoot = rootCoords.localPositionOf(prevFieldCoords, Offset.Zero)
+    val targetY = prevFieldTopLeftInRoot.y + (prevFieldCoords.size.height / 2f)
+
+    // Use the existing X coordinate to find the horizontally-aligned position in the field above
+    val targetPosition = Offset(from.globalPosition.x, targetY)
+
+    // `toSelectionCaret` elegantly handles the hit-testing and caret creation
+    return toSelectionCaret(targetPosition) ?: from
+}
+
+private fun DocumentState.moveOneDown(from: GlobalSelectionCaretState): GlobalSelectionCaretState {
+    val fieldIndex = getFieldIndex(from.fieldId)
+    if (fieldIndex < 0 || fieldIndex >= fields.lastIndex) return from // Already at the bottom field
+
+    val nextField = fields[fieldIndex + 1]
+
+    // Find the vertical center of the next field to use as the target Y coordinate
+    val nextFieldFirstBlock = nextField.blocks.first()
+    val nextFieldCoords = nextFieldFirstBlock.layoutCoordinates ?: return from // Need layout info
+    val rootCoords = rootReferenceCoordinates.value.coordinates ?: return from
+
+    val nextFieldTopLeftInRoot = rootCoords.localPositionOf(nextFieldCoords, Offset.Zero)
+    val targetY = nextFieldTopLeftInRoot.y + (nextFieldCoords.size.height / 2f)
+
+    // Use the existing X coordinate to find the horizontally-aligned position in the field below
+    val targetPosition = Offset(from.globalPosition.x, targetY)
+
+    // `toSelectionCaret` elegantly handles the hit-testing and caret creation
+    return toSelectionCaret(targetPosition) ?: from
+}
+
 private fun DocumentState.toSelectionCaret(hitPos: Offset): GlobalSelectionCaretState? {
     val hit = findTextFieldAtPosition(hitPos) ?: return null
     val (fieldId, blockId, offset) = hit
-
     val block = getFieldById(fieldId)
         ?.blocks
         ?.firstOrNull { it.id == blockId } as? Block.TextBlock ?: return null
-
     val rootCoords = rootReferenceCoordinates.value.coordinates ?: return null
-    val caretRect  = getGlobalCursorRect(block, offset, rootCoords) ?: return null
+
+    val caretRect = getGlobalCursorRect(block, offset, rootCoords) ?: return null
 
     return GlobalSelectionCaretState(
-        fieldId          = fieldId,
-        blockId          = blockId,
-        offsetInBlock    = offset,
-        globalPosition   = caretRect.topLeft
+        fieldId = fieldId,
+        blockId = blockId,
+        offsetInBlock = offset,
+        globalPosition = caretRect.topLeft
     )
 }
 
@@ -599,7 +917,7 @@ private fun DocumentState.findTextFieldAtPosition(
 
             // Rectangle of this TextBlock in *root* coordinates
             val topLeft = rootCoords.localPositionOf(coords, Offset.Zero)
-            val rect    = Rect(
+            val rect = Rect(
                 topLeft,
                 Size(coords.size.width.toFloat(), coords.size.height.toFloat())
             )
@@ -608,8 +926,8 @@ private fun DocumentState.findTextFieldAtPosition(
 
             // Found our host block – compute caret offset inside it
             val layout = tb.textLayoutResult ?: return@forEach
-            val local  = coords.localPositionOf(rootCoords, globalOffset)
-            val off    = layout.getOffsetForPosition(local)
+            val local = coords.localPositionOf(rootCoords, globalOffset)
+            val off = layout.getOffsetForPosition(local)
 
             return Triple(field.id, tb.id, off)
         }
@@ -627,12 +945,12 @@ fun DocumentState.getGlobalCursorRect(
     rootCoords: LayoutCoordinates    // usually   rootReferenceCoordinates.value.coordinates !!
 ): Rect? {
 
-    val layout       = block.textLayoutResult ?: return null
-    val blockCoords  = block.layoutCoordinates ?: return null
+    val layout = block.textLayoutResult ?: return null
+    val blockCoords = block.layoutCoordinates ?: return null
 
     // Clamp offset so we never crash on stale values
     val safeOffset = offsetInBlock.coerceIn(0, layout.layoutInput.text.length)
-    val localRect  = layout.getCursorRect(safeOffset)
+    val localRect = layout.getCursorRect(safeOffset)
 
     val globalTopLeft = rootCoords.localPositionOf(
         blockCoords,
