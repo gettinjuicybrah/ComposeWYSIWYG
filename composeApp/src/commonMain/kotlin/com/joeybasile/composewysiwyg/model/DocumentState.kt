@@ -12,6 +12,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
@@ -219,7 +220,7 @@ class DocumentState(val scope: CoroutineScope) {
         if (nextBlocks.isEmpty() || nextBlocks.first() !is Block.TextBlock) {
             val emptyText = Block.TextBlock(
                 id = Uuid.random().toString(),
-                textFieldValue = TextFieldValue("").copy(selection = TextRange(0)),
+                textFieldValue = TextFieldValue(annotatedString = AnnotatedString("")).copy(selection = TextRange(0)),
                 focusRequester = FocusRequester()
             )
             nextBlocks.add(0, emptyText)

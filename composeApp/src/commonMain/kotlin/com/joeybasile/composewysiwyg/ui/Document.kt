@@ -264,7 +264,7 @@ private fun TextBlock(
                 cursorBrush = SolidColor(Color.Blue),
                 singleLine = true
             )
-    LaunchedEffect(coords) {
+    LaunchedEffect(coords, block.id) {
         coords?.let {
             // primitive id so never pass a stale object
             state.updateBlockCoords(fieldId, block.id, it)

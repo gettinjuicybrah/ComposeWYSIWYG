@@ -1,5 +1,6 @@
 package com.joeybasile.composewysiwyg.model.linewrap
 
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.text.TextRange
@@ -9,6 +10,7 @@ import com.joeybasile.composewysiwyg.model.DocumentState
 import com.joeybasile.composewysiwyg.model.caret.syncCaret
 import com.joeybasile.composewysiwyg.model.document.Field
 import com.joeybasile.composewysiwyg.model.document.Pos
+import com.joeybasile.composewysiwyg.model.document.emptyTextBlock
 import com.joeybasile.composewysiwyg.model.getFieldReport
 import com.joeybasile.composewysiwyg.model.document.normalise
 import com.joeybasile.composewysiwyg.model.document.normalizeBlockList
@@ -80,7 +82,8 @@ fun DocumentState.genericPullDown(
 
             var doesNLComeBeforeOF = false
             if (fieldReport.measureResult.hardBreakPos != null) {
-                doesNLComeBeforeOF = fieldReport.measureResult.overflowPos!!.blockIndexWithinList > fieldReport.measureResult.hardBreakPos!!.blockIndexWithinList
+                doesNLComeBeforeOF =
+                    fieldReport.measureResult.overflowPos!!.blockIndexWithinList > fieldReport.measureResult.hardBreakPos!!.blockIndexWithinList
             }
             //fieldReport.measureResult.overflowPos!!.offsetInBlock > fieldReport.measureResult.hardBreakPos!!.offsetInBlock
             val splitPos: Pos
@@ -144,6 +147,39 @@ fun DocumentState.genericPullDown(
             println("STILL REQUIRES PULLDOWN. CONTINUING LOOP. $loopCount")
 
 
+        }
+        //Edge case where the overflow begins with a newline, then, we just insert an empty field below along with a newline.
+        //It should be impossible for any other blocks to come after a newline
+        else if (proposedField.blocks[0] is Block.DelimiterBlock) {
+            val newLineBlock = proposedField.blocks[0] as Block.DelimiterBlock
+            if (newLineBlock.kind == Block.DelimiterBlock.Kind.NewLine) {
+                val newFieldId = Uuid.random().toString()
+                val emptyNewLineField = Field(
+                    id = newFieldId,
+                    blocks = mutableStateListOf(
+                        emptyTextBlock(),
+                        Block.DelimiterBlock(
+                            id = Uuid.random().toString(),
+                            kind = Block.DelimiterBlock.Kind.NewLine
+                        )
+                    )
+                )
+                fields.add(fIndex+1, emptyNewLineField)
+
+                if (proposedField.blocks.size > 1) {
+                    proposedField = proposedField.copy(
+                        id = Uuid.random().toString(),
+                        blocks = (proposedField.blocks.toList()
+                            //2 would be fine at this point because we have used add, above the if.
+                            .drop(1) + fields[fIndex + 2].blocks.toList()).toMutableStateList()
+                    )
+                    fieldIdInListToReplaceWith = fields[fIndex+2].id
+                } else {
+                    break
+                    hasMoreToPullDown = false
+                }
+
+            }
 
         } else {
             println("DOESN'T REQUIRE PULLDOWN. BREAKING OUT OF LOOP.")
@@ -173,7 +209,6 @@ fun DocumentState.genericPullDown(
             hasMoreToPullDown = false
         }
     }
-
 }
 
 
@@ -184,6 +219,7 @@ fun DocumentState.genericPullDown(
  * Complexity: O(n) where n = number of blocks.
  */
 fun Field.totalLength(): Int = blocks.sumOf { it.length }
+
 @OptIn(ExperimentalUuidApi::class)
 fun DocumentState.splitTextBlock(
     block: Block.TextBlock,
