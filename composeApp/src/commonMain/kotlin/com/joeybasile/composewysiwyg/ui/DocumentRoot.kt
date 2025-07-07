@@ -9,7 +9,8 @@ import com.joeybasile.composewysiwyg.model.rememberDocumentState
 fun DocumentRoot(){
     val state: DocumentState = rememberDocumentState()
     Column {
-        DocumentToolbar(state, rememberLineMeasurer())
+        //DocumentToolbar(state, rememberLineMeasurer())
+        //Document(state)
         DocumentWithSelectionOverlay(state)
     }
 }

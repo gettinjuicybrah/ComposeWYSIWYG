@@ -11,7 +11,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.joeybasile.composewysiwyg.ui.DocumentRoot
-import com.joeybasile.composewysiwyg.ui.DocumentWithSelectionOverlay
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
